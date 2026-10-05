@@ -1,18 +1,25 @@
 import { NavLink } from "react-router-dom";
 
 export default function NavBar() {
-  return(
-    <nav className="navbar navbar-expand-lg bg-body-tertiary mt-3">
-      <div className="container-fluid">
-        <a className="navbar-brand" href="#">Inventory Management System</a>
+  return (
+    <nav className="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+      <div className="container">
+        <NavLink className="navbar-brand fw-bold" to="/">
+          📦 SecureStock
+        </NavLink>
 
-        <div className="collapse navbar-collapse" id="navbarSupportedContent">
-          <ul className="navbar-nav me-auto mb-2 mb-lg-0">
+        <div className="collapse navbar-collapse">
+          <ul className="navbar-nav ms-auto">
             <li className="nav-item">
-              <NavLink activeClassName="active" className="nav-link" aria-current="page" to="/">List</NavLink>
+              <NavLink className="nav-link" to="/">
+                Products
+              </NavLink>
             </li>
+
             <li className="nav-item">
-              <NavLink activeClassName="active" className="nav-link" to="/new">Add</NavLink>
+              <NavLink className="nav-link" to="/new">
+                Add Product
+              </NavLink>
             </li>
           </ul>
         </div>
