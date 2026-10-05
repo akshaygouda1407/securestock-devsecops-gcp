@@ -1,31 +1,42 @@
-version: '3'
 services:
-  mysql:
-    image: mysql:8.0
+  postgres:
+    image: postgres:16
+    container_name: securestock-postgres
     ports:
-      - "3306:3306"
+      - "5433:5432"
     environment:
-      MYSQL_ROOT_PASSWORD: P@ssw0rd
-      MYSQL_USER: product_user
-      MYSQL_PASSWORD: product_user_password
-      MYSQL_DATABASE: product
+      POSTGRES_DB: migration_dest
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: cisco
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   spring-boot-app:
-      build:
-        context: ./backend
-        dockerfile: Dockerfile
-      ports:
-        - "8080:8080"
-      depends_on:
-        - mysql
-      environment:
-        SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/productDb
-        SPRING_DATASOURCE_USERNAME: root
-        SPRING_DATASOURCE_PASSWORD: cisco
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: securestock-backend
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/migration_dest
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: cisco
+    restart: unless-stopped
 
   react-app:
-      build:
-        context: ./frontend
-        dockerfile: Dockerfile
-      ports:
-        - "3000:80"
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: securestock-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - spring-boot-app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
