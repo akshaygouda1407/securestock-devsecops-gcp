@@ -3,7 +3,11 @@ pipeline {
 
     environment {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
-        PATH = "C:\\Program Files\\nodejs;${JAVA_HOME}\\bin;${env.PATH}"
+
+        PATH = "C:\\Program Files\\Git\\cmd;" +
+               "C:\\Program Files\\nodejs;" +
+               "${JAVA_HOME}\\bin;" +
+               "${env.PATH}"
     }
 
     tools {
@@ -20,6 +24,7 @@ pipeline {
 
         stage('GitLeaks Scan') {
             steps {
+                bat 'git --version'
                 bat '"C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links\\gitleaks.exe" detect --source . --verbose'
             }
         }
