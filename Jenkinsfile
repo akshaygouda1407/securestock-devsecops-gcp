@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    environment {
+        JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
+        PATH = "${JAVA_HOME}\\bin;${env.PATH}"
+    }
+
     tools {
         maven 'Maven-3'
     }
@@ -16,6 +21,8 @@ pipeline {
         stage('Backend Build') {
             steps {
                 dir('backend') {
+                    bat 'java -version'
+                    bat 'mvn -version'
                     bat 'mvn clean package -DskipTests'
                 }
             }
