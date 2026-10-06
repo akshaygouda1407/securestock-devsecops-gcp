@@ -18,6 +18,12 @@ pipeline {
             }
         }
 
+        stage('GitLeaks Scan') {
+            steps {
+                bat 'gitleaks detect --source . --verbose'
+            }
+        }
+
         stage('Backend Build') {
             steps {
                 dir('backend') {
