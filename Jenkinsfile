@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
-        PATH = "${JAVA_HOME}\\bin;${env.PATH}"
+        PATH = "C:\\Program Files\\nodejs;${JAVA_HOME}\\bin;${env.PATH}"
     }
 
     tools {
@@ -31,6 +31,8 @@ pipeline {
         stage('Frontend Build') {
             steps {
                 dir('frontend') {
+                    bat 'node -v'
+                    bat 'npm.cmd -v'
                     bat 'npm.cmd install'
                     bat 'npm.cmd run build'
                 }
