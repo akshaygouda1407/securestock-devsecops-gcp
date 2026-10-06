@@ -20,7 +20,7 @@ pipeline {
 
         stage('GitLeaks Scan') {
             steps {
-                bat 'gitleaks detect --source . --verbose'
+                bat '"C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links\\gitleaks.exe" detect --source . --verbose'
             }
         }
 
