@@ -60,13 +60,25 @@ pipeline {
                 }
             }
         }
+
         stage('OWASP Dependency Check') {
             steps {
-                dependencyCheck additionalArguments: '--scan backend --format HTML --prettyPrint',
-                        odcInstallation: 'OWASP-Dependency-Check'
-
-                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                withCredentials([
+                    string(
+                        credentialsId: 'nvd-api-key',
+                        variable: 'NVD_API_KEY'
+                    )
+                ]) {
+                    dependencyCheck(
+                        odcInstallation: 'OWASP-Dependency-Check',
+                        additionalArguments: "--scan backend --format ALL --prettyPrint --nvdApiKey ${NVD_API_KEY}"
+                    )
                 }
+
+                dependencyCheckPublisher(
+                    pattern: '**/dependency-check-report.xml'
+                )
+            }
         }
     }
 }
