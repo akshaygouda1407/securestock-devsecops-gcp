@@ -80,5 +80,12 @@ pipeline {
                 )
             }
         }
+
+        stage('Docker Check') {
+            steps {
+                bat 'docker --version'
+                bat 'docker ps'
+            }
+        }
     }
 }
