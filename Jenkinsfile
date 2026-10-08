@@ -6,6 +6,7 @@ pipeline {
 
         PATH = "C:\\Program Files\\Git\\cmd;" +
                "C:\\Program Files\\nodejs;" +
+               "C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;" +
                "${JAVA_HOME}\\bin;" +
                "${env.PATH}"
     }
