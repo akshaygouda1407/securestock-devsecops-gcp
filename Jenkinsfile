@@ -74,10 +74,13 @@ pipeline {
             }
         }
 
-        stage('Docker Check') {
+        stage('Docker Image Build') {
             steps {
-                bat 'docker --version'
-                bat 'docker ps'
+                bat 'docker build -t securestock-backend:latest backend'
+                bat 'docker build -t securestock-frontend:latest frontend'
+
+                bat 'docker images securestock-backend'
+                bat 'docker images securestock-frontend'
             }
         }
     }
