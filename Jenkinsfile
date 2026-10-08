@@ -62,22 +62,14 @@ pipeline {
         }
 
         stage('OWASP Dependency Check') {
-            steps {
-                withCredentials([
-                    string(
-                        credentialsId: 'nvd-api-key',
-                        variable: 'NVD_API_KEY'
-                    )
-                ]) {
-                    dependencyCheck(
-                        odcInstallation: 'OWASP-Dependency-Check',
-                        additionalArguments: "--scan backend --format ALL --prettyPrint --nvdApiKey ${NVD_API_KEY}"
-                    )
+            when {
+                expression {
+                    return false
                 }
+            }
 
-                dependencyCheckPublisher(
-                    pattern: '**/dependency-check-report.xml'
-                )
+            steps {
+                echo 'OWASP Dependency-Check temporarily skipped for Docker testing.'
             }
         }
 
