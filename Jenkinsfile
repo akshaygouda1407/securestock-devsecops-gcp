@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -7,6 +8,7 @@ pipeline {
         PATH = "C:\\Program Files\\Git\\cmd;" +
                "C:\\Program Files\\nodejs;" +
                "C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;" +
+               "C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;" +
                "${JAVA_HOME}\\bin;" +
                "${env.PATH}"
     }
@@ -81,6 +83,16 @@ pipeline {
 
                 bat 'docker images securestock-backend'
                 bat 'docker images securestock-frontend'
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            steps {
+                bat 'trivy --version'
+
+                bat 'trivy image --scanners vuln --severity HIGH,CRITICAL securestock-backend:latest'
+
+                bat 'trivy image --scanners vuln --severity HIGH,CRITICAL securestock-frontend:latest'
             }
         }
     }
