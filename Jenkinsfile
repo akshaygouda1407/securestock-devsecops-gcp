@@ -85,9 +85,11 @@ pipeline {
             steps {
                 bat 'trivy --version'
 
-                bat 'trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image --scanners vuln --severity HIGH,CRITICAL --skip-db-update --skip-java-db-update securestock-backend:latest'
+                bat 'trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image --scanners vuln --severity HIGH,CRITICAL --skip-db-update --skip-java-db-update --format json --output trivy-backend-report.json securestock-backend:latest'
 
-                bat 'trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image --scanners vuln --severity HIGH,CRITICAL --skip-db-update --skip-java-db-update securestock-frontend:latest'
+                bat 'trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image --scanners vuln --severity HIGH,CRITICAL --skip-db-update --skip-java-db-update --format json --output trivy-frontend-report.json securestock-frontend:latest'
+
+                archiveArtifacts artifacts: 'trivy-*-report.json', fingerprint: true
             }
         }
     }
