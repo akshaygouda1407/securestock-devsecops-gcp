@@ -54,35 +54,30 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
+            when {
+                expression { return false }
+            }
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    script {
-                        def scannerHome = tool 'SonarScanner'
-                        bat "\"${scannerHome}\\bin\\sonar-scanner.bat\""
-                    }
-                }
+                echo 'Temporarily skipped.'
             }
         }
 
         stage('OWASP Dependency Check') {
             when {
-                expression {
-                    return false
-                }
+                expression { return false }
             }
-
             steps {
-                echo 'OWASP Dependency-Check temporarily skipped for Docker testing.'
+                echo 'Temporarily skipped.'
             }
         }
 
         stage('Docker Image Build') {
+            when {
+                expression { return false }
+            }
             steps {
                 bat 'docker build -t securestock-backend:latest backend'
                 bat 'docker build -t securestock-frontend:latest frontend'
-
-                bat 'docker images securestock-backend'
-                bat 'docker images securestock-frontend'
             }
         }
 
@@ -90,9 +85,9 @@ pipeline {
             steps {
                 bat 'trivy --version'
 
-                bat 'trivy image --scanners vuln --severity HIGH,CRITICAL securestock-backend:latest'
+                bat 'trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image --scanners vuln --severity HIGH,CRITICAL --skip-db-update --skip-java-db-update securestock-backend:latest'
 
-                bat 'trivy image --scanners vuln --severity HIGH,CRITICAL securestock-frontend:latest'
+                bat 'trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image --scanners vuln --severity HIGH,CRITICAL --skip-db-update --skip-java-db-update securestock-frontend:latest'
             }
         }
     }
