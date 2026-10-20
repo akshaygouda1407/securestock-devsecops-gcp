@@ -8,9 +8,6 @@ pipeline {
                "C:\\Program Files\\nodejs;" +
                "C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;" +
                "C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;" +
-               "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313;" +
-               "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\Scripts;" +
-               "C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts;" +
                "${JAVA_HOME}\\bin;" +
                "${env.PATH}"
     }
@@ -36,9 +33,8 @@ pipeline {
 
         stage('Terraform Security Scan') {
             steps {
-                bat 'python --version'
-                bat 'python -m checkov --version'
-                bat 'python -m checkov -f terraform\\storage.tf --framework terraform --output json --output-file-path checkov-output'
+                bat '"C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts\\checkov.cmd" --version'
+                bat '"C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts\\checkov.cmd" -f terraform\\storage.tf --framework terraform --output json --output-file-path checkov-output'
 
                 archiveArtifacts artifacts: 'checkov-output\\results_json.json',
                                  fingerprint: true
