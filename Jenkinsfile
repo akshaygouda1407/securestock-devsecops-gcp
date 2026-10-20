@@ -8,6 +8,9 @@ pipeline {
                "C:\\Program Files\\nodejs;" +
                "C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;" +
                "C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;" +
+               "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313;" +
+               "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\Scripts;" +
+               "C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts;" +
                "${JAVA_HOME}\\bin;" +
                "${env.PATH}"
     }
@@ -33,6 +36,7 @@ pipeline {
 
         stage('Terraform Security Scan') {
             steps {
+                bat 'python --version'
                 bat 'python -m checkov --version'
                 bat 'python -m checkov -f terraform\\storage.tf --framework terraform --output json --output-file-path checkov-output'
 
@@ -76,7 +80,7 @@ pipeline {
                 expression { return false }
             }
             steps {
-                echo 'Temporarily skipped.'
+                echo `Temporarily skipped.`
             }
         }
 
