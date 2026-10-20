@@ -80,7 +80,7 @@ pipeline {
                 expression { return false }
             }
             steps {
-                echo `Temporarily skipped.`
+                echo 'Temporarily skipped.'
             }
         }
 
