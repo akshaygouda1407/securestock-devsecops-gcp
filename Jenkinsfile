@@ -33,8 +33,9 @@ pipeline {
 
         stage('Terraform Security Scan') {
             steps {
-                bat '"C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts\\checkov.cmd" --version'
-                bat '"C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts\\checkov.cmd" -f terraform\\storage.tf --framework terraform --output json --output-file-path checkov-output'
+                // Call python with the absolute script path to bypass the .cmd wrapper registry limitation
+                bat '"C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\python.exe" -m pip install checkov --quiet || true'
+                bat '"C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\python.exe" -m checkov -f terraform\\storage.tf --framework terraform --output json --output-file-path checkov-output'
 
                 archiveArtifacts artifacts: 'checkov-output\\results_json.json',
                                  fingerprint: true
