@@ -33,9 +33,9 @@ pipeline {
 
         stage('Terraform Security Scan') {
             steps {
-                bat '"C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts\\checkov.cmd" --version'
-                bat '"C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts\\checkov.cmd" -f terraform\\storage.tf --framework terraform --output json --output-file-path checkov-output'
-                
+                bat 'python -m checkov --version'
+                bat 'python -m checkov -f terraform\\storage.tf --framework terraform --output json --output-file-path checkov-output'
+
                 archiveArtifacts artifacts: 'checkov-output\\results_json.json',
                                  fingerprint: true
             }
@@ -90,9 +90,11 @@ pipeline {
         stage('Trivy Image Scan') {
             steps {
                 bat 'trivy --version'
+
                 bat 'trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image --scanners vuln --severity HIGH,CRITICAL --skip-db-update --skip-java-db-update --format json --output trivy-backend-report.json securestock-backend:latest'
+
                 bat 'trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image --scanners vuln --severity HIGH,CRITICAL --skip-db-update --skip-java-db-update --format json --output trivy-frontend-report.json securestock-frontend:latest'
-                
+
                 archiveArtifacts artifacts: 'trivy-*-report.json',
                                  fingerprint: true
             }
