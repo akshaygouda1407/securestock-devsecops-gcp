@@ -31,7 +31,10 @@ export default function UpdateProductForm() {
     }
 
     fetchData();
-  }, [id, updateProduct]);
+
+    // Prevent refetching on every keystroke
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const handleChange = (event) => {
     const { id, value } = event.target;
@@ -47,9 +50,9 @@ export default function UpdateProductForm() {
 
     setError("");
 
-    const title = product.title?.trim();
-    const price = Number(product.price);
-    const quantity = Number(product.quantity);
+    const title = product?.title?.trim();
+    const price = Number(product?.price);
+    const quantity = Number(product?.quantity);
 
     if (!title) {
       setError("Product title is required.");
@@ -148,7 +151,6 @@ export default function UpdateProductForm() {
                 </div>
 
                 <div>
-
                   <h4 className="mb-1 fw-bold">
                     Product Information
                   </h4>
@@ -156,7 +158,6 @@ export default function UpdateProductForm() {
                   <small className="text-muted">
                     Editing Product ID #{id}
                   </small>
-
                 </div>
 
               </div>
@@ -185,7 +186,7 @@ export default function UpdateProductForm() {
 
                   <input
                     onChange={handleChange}
-                    value={product?.title || ""}
+                    value={product?.title ?? ""}
                     type="text"
                     className="form-control form-control-lg"
                     id="title"
@@ -218,7 +219,7 @@ export default function UpdateProductForm() {
 
                       <input
                         onChange={handleChange}
-                        value={product?.price || ""}
+                        value={product?.price ?? ""}
                         type="number"
                         className="form-control"
                         id="price"
@@ -242,7 +243,7 @@ export default function UpdateProductForm() {
 
                     <input
                       onChange={handleChange}
-                      value={product?.quantity || ""}
+                      value={product?.quantity ?? ""}
                       type="number"
                       className="form-control form-control-lg"
                       id="quantity"
@@ -264,11 +265,9 @@ export default function UpdateProductForm() {
                 >
 
                   <small className="text-muted">
-
                     <strong>Stock rule:</strong>{" "}
                     Quantity 0 = Out of Stock, 1–5 = Low Stock,
                     more than 5 = In Stock.
-
                   </small>
 
                 </div>

@@ -1,32 +1,69 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import './App.css';
-import 'bootstrap/dist/css/bootstrap.min.css'
-import CreateProductForm from './components/CreateProductForm'
-import NavBar from "./components/NavBar";
+import React from "react";
+import {
+  Routes,
+  Route,
+} from "react-router-dom";
+
+import Sidebar from "./components/Sidebar";
+
 import ProductList from "./components/ProductList";
-import Products from "./components/Products";
-import { ProductListProvider } from "./context/ProductContext";
+import CreateProductForm from "./components/CreateProductForm";
 import ProductDetail from "./components/ProductDetail";
-import UpdateProductForm from './components/UpdateProductForm';
+import UpdateProductForm from "./components/UpdateProductForm";
 
 function App() {
   return (
-    <Router>
-      <ProductListProvider>
-        <div className="container">
-          <NavBar />
-          <hr />
-          <Routes>
-            <Route path="/new" element={<CreateProductForm />} />
-            <Route path="/" element={<Products />}>
-              <Route index element={<ProductList />} />
-              <Route path=":id" element={<ProductDetail />} />
-              <Route path=":id/edit" element={<UpdateProductForm />} />
-            </Route>
-          </Routes>
-        </div>
-      </ProductListProvider>
-    </Router>
+    <div
+      className="d-flex"
+      style={{
+        minHeight: "100vh",
+        backgroundColor: "#f5f6f8",
+      }}
+    >
+
+      {/* Sidebar */}
+      <Sidebar />
+
+      {/* Main Application Area */}
+      <main
+        className="flex-grow-1"
+        style={{
+          minWidth: 0,
+          overflowX: "hidden",
+        }}
+      >
+
+        <Routes>
+
+          {/* Dashboard / Product List */}
+          <Route
+            path="/"
+            element={<ProductList />}
+          />
+
+          {/* Add Product */}
+          <Route
+            path="/new"
+            element={<CreateProductForm />}
+          />
+
+          {/* View Product */}
+          <Route
+            path="/:id"
+            element={<ProductDetail />}
+          />
+
+          {/* Edit Product */}
+          <Route
+            path="/:id/edit"
+            element={<UpdateProductForm />}
+          />
+
+        </Routes>
+
+      </main>
+
+    </div>
   );
 }
 

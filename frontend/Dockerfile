@@ -1,31 +1,22 @@
-# Build stage
+
 FROM node:18 AS build
-
 WORKDIR /app
-
-# Copy package.json and package-lock.json to the container
-COPY package*.json ./
-
-# Install dependencies
-RUN npm install
-
-# Copy the rest of the application code
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
-
-# Build the React app
 RUN npm run build
 
-# Serve stage
-FROM nginx:1.25.1
+FROM nginx:stable-alpine
 
-# Copy the custom nginx.conf file to the container
+# Apply available security updates
+RUN apk upgrade --no-cache && \
+    mkdir -p /tmp/client_temp /tmp/proxy_temp /tmp/fastcgi_temp \
+             /tmp/uwsgi_temp /tmp/scgi_temp && \
+    chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /tmp
+
 COPY .docker/nginx.conf /etc/nginx/nginx.conf
+COPY --from=build --chown=nginx:nginx /app/build /usr/share/nginx/html
 
-# Copy the built React app from the build stage to the nginx container
-COPY --from=build /app/build /usr/share/nginx/html
-
-# Expose port 80
-EXPOSE 80
-
-# Start Nginx
+USER nginx
+EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]

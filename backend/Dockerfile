@@ -1,27 +1,32 @@
-# Use the official Maven image as the base image
+# Stage 1: Build the Spring Boot application
 FROM maven:3.9.9-eclipse-temurin-17 AS build
-
-# Set the working directory
 WORKDIR /app
 
-# Copy the pom.xml and any other necessary configuration files
-COPY ./pom.xml /app
-COPY ./src /app/src
+COPY pom.xml .
+COPY src ./src
 
-# Build the application
-RUN mvn clean package -Dmaven.test.skip=true
+RUN mvn -B clean package -Dmaven.test.skip=true
 
-# Create a new image for running the application
+# Stage 2: Runtime image
 FROM eclipse-temurin:17-jdk
-
-# Set the working directory
 WORKDIR /app
 
-# Copy the built JAR file from the previous stage
-COPY --from=build /app/target/*.jar app.jar
+# Update vulnerable OS packages
+USER root
+RUN apt-get update && \
+    apt-get install -y --only-upgrade curl libcurl4t64 && \
+    rm -f /usr/bin/pebble && \
+    rm -rf /var/lib/apt/lists/*
 
-# Expose the port on which the Spring Boot application will run
+# Create a non-root application user
+RUN groupadd --system appgroup && \
+    useradd --system --gid appgroup --home-dir /nonexistent \
+    --shell /usr/sbin/nologin appuser
+
+# Copy the built JAR from Stage 1
+COPY --from=build --chown=appuser:appgroup /app/target/*.jar /app/app.jar
+
+USER appuser:appgroup
+
 EXPOSE 8080
-
-# Command to run the application
-CMD ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

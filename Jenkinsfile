@@ -1,4 +1,4 @@
-
+```groovy
 pipeline {
     agent any
 
@@ -29,6 +29,17 @@ pipeline {
             steps {
                 bat 'git --version'
                 bat '"C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links\\gitleaks.exe" detect --source . --verbose'
+            }
+        }
+
+        stage('Terraform Security Scan') {
+            steps {
+                bat '"C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts\\checkov.cmd" --version'
+
+                bat '"C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts\\checkov.cmd" -f terraform\\storage.tf --framework terraform --output json --output-file-path checkov-output'
+
+                archiveArtifacts artifacts: 'checkov-output\\results_json.json',
+                                 fingerprint: true
             }
         }
 
@@ -89,8 +100,16 @@ pipeline {
 
                 bat 'trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image --scanners vuln --severity HIGH,CRITICAL --skip-db-update --skip-java-db-update --format json --output trivy-frontend-report.json securestock-frontend:latest'
 
-                archiveArtifacts artifacts: 'trivy-*-report.json', fingerprint: true
+                archiveArtifacts artifacts: 'trivy-*-report.json',
+                                 fingerprint: true
             }
         }
     }
+
+    post {
+        always {
+            echo 'SecureStock DevSecOps pipeline finished. Review the scan reports in the Jenkins build artifacts.'
+        }
+    }
 }
+```
