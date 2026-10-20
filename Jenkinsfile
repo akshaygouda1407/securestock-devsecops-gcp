@@ -1,4 +1,3 @@
-groovy
 pipeline {
     agent any
 
@@ -35,9 +34,8 @@ pipeline {
         stage('Terraform Security Scan') {
             steps {
                 bat '"C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts\\checkov.cmd" --version'
-
                 bat '"C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts\\checkov.cmd" -f terraform\\storage.tf --framework terraform --output json --output-file-path checkov-output'
-
+                
                 archiveArtifacts artifacts: 'checkov-output\\results_json.json',
                                  fingerprint: true
             }
@@ -83,9 +81,6 @@ pipeline {
         }
 
         stage('Docker Image Build') {
-            when {
-                expression { return false }
-            }
             steps {
                 bat 'docker build -t securestock-backend:latest backend'
                 bat 'docker build -t securestock-frontend:latest frontend'
@@ -95,11 +90,9 @@ pipeline {
         stage('Trivy Image Scan') {
             steps {
                 bat 'trivy --version'
-
                 bat 'trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image --scanners vuln --severity HIGH,CRITICAL --skip-db-update --skip-java-db-update --format json --output trivy-backend-report.json securestock-backend:latest'
-
                 bat 'trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image --scanners vuln --severity HIGH,CRITICAL --skip-db-update --skip-java-db-update --format json --output trivy-frontend-report.json securestock-frontend:latest'
-
+                
                 archiveArtifacts artifacts: 'trivy-*-report.json',
                                  fingerprint: true
             }
