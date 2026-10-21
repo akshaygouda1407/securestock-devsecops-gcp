@@ -49,19 +49,20 @@ pipeline {
                     )
 
                     "%CHECKOV_PYTHON%" -m checkov.main --version
+
                     if errorlevel 1 exit /b 1
                 '''
 
                 bat '''
                     if not exist "terraform" (
-                        echo ERROR: terraform directory not found.
+                        echo ERROR: Terraform directory was not found.
                         exit /b 1
                     )
 
                     if not exist "checkov-output" mkdir "checkov-output"
 
                     "%CHECKOV_PYTHON%" -m checkov.main ^
-                        --directory terraform ^
+                        -d terraform ^
                         --framework terraform ^
                         --output json ^
                         --output-file-path checkov-output
@@ -84,9 +85,15 @@ pipeline {
         stage('Backend Tests') {
             steps {
                 dir('backend') {
-                    bat 'java -version'
-                    bat 'mvn -version'
-                    bat 'mvn test'
+                    withEnv([
+                        'SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/migration_dest',
+                        'SPRING_DATASOURCE_USERNAME=postgres',
+                        'SPRING_DATASOURCE_PASSWORD=cisco'
+                    ]) {
+                        bat 'java -version'
+                        bat 'mvn -version'
+                        bat 'mvn test'
+                    }
                 }
             }
         }
@@ -104,11 +111,14 @@ pipeline {
                 dir('frontend') {
                     bat '''
                         if not exist package-lock.json (
-                            echo ERROR: package-lock.json not found. npm ci requires a lockfile.
+                            echo ERROR: frontend\\package-lock.json was not found.
+                            echo Run npm install locally and commit package-lock.json.
                             exit /b 1
                         )
 
                         npm.cmd ci
+
+                        if errorlevel 1 exit /b 1
                     '''
                 }
             }
@@ -117,18 +127,19 @@ pipeline {
         stage('Frontend Security Audit') {
             steps {
                 dir('frontend') {
-                    bat 'npm.cmd audit --audit-level=high'
-                }
+                    bat '''
+                        npm.cmd audit --audit-level=high
 
+                        if errorlevel 1 exit /b 1
+                    '''
+                }
             }
+
             post {
                 always {
                     dir('frontend') {
                         bat '''
                             npm.cmd audit --json > ..\\frontend-audit.json
-                            if errorlevel 1 (
-                                echo npm audit reported vulnerabilities or encountered an error.
-                            )
                             exit /b 0
                         '''
                     }
@@ -154,26 +165,34 @@ pipeline {
 
         stage('SonarQube Analysis') {
             when {
-                expression { return false }
+                expression {
+                    return false
+                }
             }
+
             steps {
-                echo 'SonarQube Analysis is disabled until SonarQube is configured.'
+                echo 'SonarQube Analysis is temporarily disabled.'
             }
         }
 
         stage('OWASP Dependency Check') {
             when {
-                expression { return false }
+                expression {
+                    return false
+                }
             }
+
             steps {
-                echo 'OWASP Dependency-Check is disabled until its tool and configuration are available.'
+                echo 'OWASP Dependency-Check is temporarily disabled.'
             }
         }
 
         stage('Docker Image Build') {
             steps {
                 bat 'docker --version'
+
                 bat 'docker build -t securestock-backend:latest backend'
+
                 bat 'docker build -t securestock-frontend:latest frontend'
             }
         }
@@ -183,7 +202,8 @@ pipeline {
                 bat 'trivy --version'
 
                 bat '''
-                    trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image ^
+                    trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" ^
+                        image ^
                         --scanners vuln ^
                         --severity HIGH,CRITICAL ^
                         --skip-db-update ^
@@ -195,7 +215,8 @@ pipeline {
                 '''
 
                 bat '''
-                    trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" image ^
+                    trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" ^
+                        image ^
                         --scanners vuln ^
                         --severity HIGH,CRITICAL ^
                         --skip-db-update ^
@@ -221,15 +242,15 @@ pipeline {
 
     post {
         success {
-            echo 'SecureStock DevSecOps pipeline passed all enabled stages.'
+            echo 'SUCCESS: SecureStock DevSecOps pipeline completed successfully.'
         }
 
         failure {
-            echo 'SecureStock DevSecOps pipeline failed. Review the failed stage and archived scan reports.'
+            echo 'FAILURE: Pipeline failed. Review the failed stage and Jenkins console output.'
         }
 
         always {
-            echo 'Pipeline execution finished. Review Jenkins console output and available build artifacts.'
+            echo 'SecureStock DevSecOps pipeline finished. Review the security scan reports in Jenkins build artifacts.'
         }
     }
 }
