@@ -88,7 +88,8 @@ pipeline {
                     withEnv([
                         'SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/migration_dest',
                         'SPRING_DATASOURCE_USERNAME=postgres',
-                        'SPRING_DATASOURCE_PASSWORD=cisco'
+                        'SPRING_DATASOURCE_PASSWORD=cisco',
+                        'JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Kolkata'
                     ]) {
                         bat 'java -version'
                         bat 'mvn -version'
