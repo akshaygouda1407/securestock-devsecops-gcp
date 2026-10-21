@@ -4,13 +4,14 @@ pipeline {
     environment {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
 
-        CHECKOV_EXE = 'C:\\Users\\User\\AppData\\Roaming\\Python\\Python314\\Scripts\\checkov.cmd'
+        CHECKOV_EXE = 'C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts\\checkov.cmd'
 
         PATH = "C:\\Program Files\\Git\\cmd;" +
                "C:\\Program Files\\nodejs;" +
                "C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;" +
                "C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;" +
-               "C:\\Users\\User\\AppData\\Roaming\\Python\\Python314\\Scripts;" +
+               "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313;" +
+               "C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts;" +
                "${JAVA_HOME}\\bin;" +
                "${env.PATH}"
     }
@@ -40,21 +41,31 @@ pipeline {
         stage('Terraform Security Scan') {
             steps {
                 bat '''
+                    echo Checking Checkov installation...
+
                     if not exist "%CHECKOV_EXE%" (
                         echo ERROR: Checkov executable not found: %CHECKOV_EXE%
                         exit /b 1
                     )
 
                     "%CHECKOV_EXE%" --version
+
+                    if errorlevel 1 exit /b 1
                 '''
 
                 bat '''
+                    echo Checking Terraform configuration...
+
                     if not exist "terraform\\storage.tf" (
                         echo ERROR: terraform\\storage.tf was not found.
                         exit /b 1
                     )
 
+                    echo Running Checkov Terraform security scan...
+
                     "%CHECKOV_EXE%" -f terraform\\storage.tf --framework terraform --output json --output-file-path checkov-output
+
+                    if errorlevel 1 exit /b 1
                 '''
             }
 
@@ -92,6 +103,7 @@ pipeline {
             when {
                 expression { return false }
             }
+
             steps {
                 echo 'SonarQube Analysis is temporarily disabled.'
             }
@@ -101,6 +113,7 @@ pipeline {
             when {
                 expression { return false }
             }
+
             steps {
                 echo 'OWASP Dependency-Check is temporarily disabled.'
             }
