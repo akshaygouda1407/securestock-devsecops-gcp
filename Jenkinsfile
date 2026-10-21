@@ -1,15 +1,17 @@
+
 pipeline {
     agent any
 
     environment {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
 
-        CHECKOV_EXE = 'C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts\\checkov.cmd'
+        CHECKOV_PYTHON = 'E:\\checkov-venv\\Scripts\\python.exe'
 
         PATH = "C:\\Program Files\\Git\\cmd;" +
                "C:\\Program Files\\nodejs;" +
                "C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;" +
                "C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;" +
+               "E:\\checkov-venv\\Scripts;" +
                "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313;" +
                "C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts;" +
                "${JAVA_HOME}\\bin;" +
@@ -41,29 +43,28 @@ pipeline {
         stage('Terraform Security Scan') {
             steps {
                 bat '''
-                    echo Checking Checkov installation...
-
-                    if not exist "%CHECKOV_EXE%" (
-                        echo ERROR: Checkov executable not found: %CHECKOV_EXE%
+                    if not exist "%CHECKOV_PYTHON%" (
+                        echo ERROR: Checkov Python environment not found: %CHECKOV_PYTHON%
                         exit /b 1
                     )
 
-                    "%CHECKOV_EXE%" --version
-
+                    "%CHECKOV_PYTHON%" -m checkov.main --version
                     if errorlevel 1 exit /b 1
                 '''
 
                 bat '''
-                    echo Checking Terraform configuration...
-
                     if not exist "terraform\\storage.tf" (
                         echo ERROR: terraform\\storage.tf was not found.
                         exit /b 1
                     )
 
-                    echo Running Checkov Terraform security scan...
+                    if not exist "checkov-output" mkdir "checkov-output"
 
-                    "%CHECKOV_EXE%" -f terraform\\storage.tf --framework terraform --output json --output-file-path checkov-output
+                    "%CHECKOV_PYTHON%" -m checkov.main ^
+                        -f terraform\\storage.tf ^
+                        --framework terraform ^
+                        --output json ^
+                        --output-file-path checkov-output
 
                     if errorlevel 1 exit /b 1
                 '''
@@ -71,9 +72,11 @@ pipeline {
 
             post {
                 always {
-                    archiveArtifacts artifacts: 'checkov-output\\results_json.json',
-                                     allowEmptyArchive: true,
-                                     fingerprint: true
+                    archiveArtifacts(
+                        artifacts: 'checkov-output\\**',
+                        allowEmptyArchive: true,
+                        fingerprint: true
+                    )
                 }
             }
         }
@@ -103,7 +106,6 @@ pipeline {
             when {
                 expression { return false }
             }
-
             steps {
                 echo 'SonarQube Analysis is temporarily disabled.'
             }
@@ -113,7 +115,6 @@ pipeline {
             when {
                 expression { return false }
             }
-
             steps {
                 echo 'OWASP Dependency-Check is temporarily disabled.'
             }
@@ -122,9 +123,7 @@ pipeline {
         stage('Docker Image Build') {
             steps {
                 bat 'docker --version'
-
                 bat 'docker build -t securestock-backend:latest backend'
-
                 bat 'docker build -t securestock-frontend:latest frontend'
             }
         }
@@ -144,9 +143,11 @@ pipeline {
 
             post {
                 always {
-                    archiveArtifacts artifacts: 'trivy-*-report.json',
-                                     allowEmptyArchive: true,
-                                     fingerprint: true
+                    archiveArtifacts(
+                        artifacts: 'trivy-*-report.json',
+                        allowEmptyArchive: true,
+                        fingerprint: true
+                    )
                 }
             }
         }
@@ -154,7 +155,7 @@ pipeline {
 
     post {
         always {
-            echo 'SecureStock DevSecOps pipeline finished. Review the scan reports in the Jenkins build artifacts.'
+            echo 'SecureStock DevSecOps pipeline finished. Review scan reports in Jenkins build artifacts.'
         }
     }
 }
