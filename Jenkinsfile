@@ -164,15 +164,7 @@ pipeline {
 
                         int validationStatus = bat(
                             returnStatus: true,
-                            script: '''
-                                powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ^
-                                  "$p = Join-Path (Get-Location) 'frontend-audit.json'; ^
-                                   if (-not (Test-Path $p)) { exit 1 }; ^
-                                   try { ^
-                                     $r = Get-Content -Raw $p | ConvertFrom-Json -ErrorAction Stop; ^
-                                     if ($null -ne $r.metadata -and $null -ne $r.metadata.vulnerabilities) { exit 0 } else { exit 1 } ^
-                                   } catch { exit 1 }"
-                            '''
+                            script: '''node -e "try { const r = JSON.parse(require('fs').readFileSync('frontend-audit.json', 'utf8')); process.exit(r.metadata && r.metadata.vulnerabilities ? 0 : 1); } catch (e) { process.exit(1); }"'''
                         )
 
                         if (validationStatus == 0) {
@@ -181,7 +173,7 @@ pipeline {
                         }
 
                         if (attempt < 3) {
-                            echo 'npm audit did not return a valid report. Retrying in 20 seconds.'
+                            echo 'npm audit did not return a valid JSON report. Retrying in 20 seconds.'
                             sleep time: 20, unit: 'SECONDS'
                         }
                     }
