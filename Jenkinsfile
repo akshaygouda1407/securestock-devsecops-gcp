@@ -65,7 +65,6 @@ pipeline {
             steps {
                 script {
                     if (fileExists('terraform')) {
-
                         int checkovStatus = bat(
                             returnStatus: true,
                             script: '''
@@ -85,7 +84,6 @@ pipeline {
                         if (checkovStatus != 0) {
                             error('Checkov Terraform security scan failed. Review the scan output and checkov-report.json.')
                         }
-
                     } else {
                         echo 'No terraform directory found. Terraform scan skipped.'
                     }
@@ -153,13 +151,43 @@ pipeline {
         stage('Frontend Security Audit') {
             steps {
                 script {
-                    int auditStatus
+                    int auditStatus = 1
+                    boolean validAuditReport = false
 
                     dir('frontend') {
-                        auditStatus = bat(
-                            returnStatus: true,
-                            script: 'npm.cmd audit --audit-level=high --json > ..\\frontend-audit.json'
-                        )
+                        for (int attempt = 1; attempt <= 3; attempt++) {
+                            echo "Running frontend security audit (attempt ${attempt}/3)"
+
+                            auditStatus = bat(
+                                returnStatus: true,
+                                script: 'npm.cmd audit --audit-level=high --json > ..\\frontend-audit.json'
+                            )
+
+                            String report = fileExists('../frontend-audit.json')
+                                ? readFile('../frontend-audit.json')
+                                : ''
+
+                            try {
+                                def parsedReport = new groovy.json.JsonSlurperClassic().parseText(report)
+
+                                if (parsedReport instanceof Map &&
+                                    parsedReport.metadata instanceof Map &&
+                                    parsedReport.metadata.vulnerabilities instanceof Map) {
+                                    validAuditReport = true
+                                }
+                            } catch (Exception ignored) {
+                                validAuditReport = false
+                            }
+
+                            if (validAuditReport) {
+                                break
+                            }
+
+                            if (attempt < 3) {
+                                echo 'npm audit did not return a valid JSON report. Retrying in 20 seconds.'
+                                sleep time: 20, unit: 'SECONDS'
+                            }
+                        }
                     }
 
                     archiveArtifacts(
@@ -167,9 +195,15 @@ pipeline {
                         allowEmptyArchive: true
                     )
 
-                    if (auditStatus != 0) {
-                        error('Frontend npm audit failed or found HIGH/CRITICAL vulnerabilities. Download frontend-audit.json from the build artifacts and inspect it.')
+                    if (!validAuditReport) {
+                        error('npm audit service did not return a valid report after 3 attempts. Check registry availability and the console output.')
                     }
+
+                    if (auditStatus != 0) {
+                        error('Frontend npm audit found HIGH/CRITICAL vulnerabilities or returned an audit failure. Review frontend-audit.json.')
+                    }
+
+                    echo 'Frontend security audit passed.'
                 }
             }
         }
@@ -260,6 +294,8 @@ pipeline {
                     if (backendScanStatus != 0 || frontendScanStatus != 0) {
                         error('Trivy scan failed or found HIGH/CRITICAL vulnerabilities. Review the console output and archived reports.')
                     }
+
+                    echo 'Backend and frontend Trivy scans passed.'
                 }
             }
         }
