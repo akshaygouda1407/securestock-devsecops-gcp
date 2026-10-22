@@ -15,7 +15,7 @@ pipeline {
 
     environment {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
-        CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.exe'
+        CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.cmd'
 
         // Add tool directories without overwriting Jenkins/Maven PATH entries.
         PATH = "C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;${env.PATH}"
