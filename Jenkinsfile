@@ -10,6 +10,8 @@ pipeline {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
         CHECKOV_PYTHON = 'E:\\checkov-venv\\Scripts\\python.exe'
 
+        PATH = 'C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0'
+
         SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/migration_dest'
         SPRING_DATASOURCE_USERNAME = 'postgres'
         SPRING_DATASOURCE_PASSWORD = 'cisco'
@@ -127,7 +129,7 @@ pipeline {
 
                         if (auditStatus != 0) {
                             error(
-                                'Frontend npm audit failed. Check frontend/frontend-audit.json.'
+                                'Frontend npm audit failed. Check frontend-audit.json.'
                             )
                         }
                     }
@@ -212,7 +214,7 @@ pipeline {
 
                     if (backendScanStatus != 0 || frontendScanStatus != 0) {
                         error(
-                            'Trivy detected HIGH/CRITICAL vulnerabilities or a scan error. Check the archived reports and console output.'
+                            'Trivy detected HIGH/CRITICAL vulnerabilities or a scan error. Check the reports and console output.'
                         )
                     }
                 }
