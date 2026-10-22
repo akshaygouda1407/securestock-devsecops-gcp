@@ -10,7 +10,7 @@ pipeline {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
         CHECKOV_PYTHON = 'E:\\checkov-venv\\Scripts\\python.exe'
 
-        PATH = 'C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0'
+        PATH = 'C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0'
 
         SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/migration_dest'
         SPRING_DATASOURCE_USERNAME = 'postgres'
@@ -27,7 +27,6 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
-
                 bat 'git --version'
                 bat 'java -version'
                 bat 'node --version'
@@ -38,9 +37,7 @@ pipeline {
 
         stage('GitLeaks Scan') {
             steps {
-                bat '''
-                    gitleaks detect --source . --no-git --redact --exit-code 1
-                '''
+                bat 'gitleaks detect --source . --no-git --redact --exit-code 1'
             }
         }
 
@@ -69,7 +66,6 @@ pipeline {
                         'SPRING_DATASOURCE_PASSWORD=cisco',
                         'JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Kolkata'
                     ]) {
-                        bat 'java -version'
                         bat 'mvn -version'
                         bat 'mvn test'
                     }
@@ -128,9 +124,7 @@ pipeline {
                         )
 
                         if (auditStatus != 0) {
-                            error(
-                                'Frontend npm audit failed. Check frontend-audit.json.'
-                            )
+                            error('Frontend npm audit failed. Check frontend-audit.json.')
                         }
                     }
                 }
@@ -161,14 +155,8 @@ pipeline {
 
         stage('Docker Image Build') {
             steps {
-                bat '''
-                    docker build -t %BACKEND_IMAGE% -f backend/Dockerfile backend
-                '''
-
-                bat '''
-                    docker build -t %FRONTEND_IMAGE% -f frontend/Dockerfile frontend
-                '''
-
+                bat 'docker build -t %BACKEND_IMAGE% -f backend/Dockerfile backend'
+                bat 'docker build -t %FRONTEND_IMAGE% -f frontend/Dockerfile frontend'
                 bat 'docker image ls securestock-backend'
                 bat 'docker image ls securestock-frontend'
             }
@@ -213,9 +201,7 @@ pipeline {
                     )
 
                     if (backendScanStatus != 0 || frontendScanStatus != 0) {
-                        error(
-                            'Trivy detected HIGH/CRITICAL vulnerabilities or a scan error. Check the reports and console output.'
-                        )
+                        error('Trivy found HIGH/CRITICAL vulnerabilities or encountered a scan error. Review the reports.')
                     }
                 }
             }
