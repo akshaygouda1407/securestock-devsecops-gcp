@@ -1,4 +1,4 @@
-
+```groovy
 pipeline {
     agent any
 
@@ -30,7 +30,6 @@ pipeline {
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 checkout scm
@@ -80,7 +79,7 @@ pipeline {
                         )
 
                         if (checkovStatus != 0) {
-                            error('Checkov Terraform security scan failed. Review the scan output and checkov-report.json.')
+                            error('Checkov Terraform security scan failed. Review checkov-report.json.')
                         }
                     } else {
                         echo 'No terraform directory found. Terraform scan skipped.'
@@ -105,7 +104,6 @@ pipeline {
                     }
                 }
             }
-
             post {
                 always {
                     junit(
@@ -173,7 +171,7 @@ pipeline {
                         }
 
                         if (attempt < 3) {
-                            echo 'npm audit did not return a valid JSON report. Retrying in 20 seconds.'
+                            echo 'npm audit did not return valid JSON. Retrying in 20 seconds.'
                             sleep time: 20, unit: 'SECONDS'
                         }
                     }
@@ -184,11 +182,11 @@ pipeline {
                     )
 
                     if (!validAuditReport) {
-                        error('npm audit did not return a valid JSON report after 3 attempts. Inspect frontend-audit-error.txt and check npm registry availability.')
+                        error('npm audit did not return a valid JSON report after 3 attempts. Inspect the archived audit files.')
                     }
 
                     if (auditStatus != 0) {
-                        error('Frontend npm audit reported vulnerabilities at the configured severity threshold or another audit failure. Inspect frontend-audit.json.')
+                        error('Frontend npm audit reported HIGH/CRITICAL vulnerabilities or another audit failure. Inspect frontend-audit.json.')
                     }
 
                     echo 'Frontend security audit passed.'
@@ -249,6 +247,9 @@ pipeline {
                         script: '''
                             trivy image ^
                               --db-repository ghcr.io/aquasecurity/trivy-db:2 ^
+                              --db-repository public.ecr.aws/aquasecurity/trivy-db:2 ^
+                              --java-db-repository ghcr.io/aquasecurity/trivy-java-db:1 ^
+                              --java-db-repository public.ecr.aws/aquasecurity/trivy-java-db:1 ^
                               --timeout 15m ^
                               --scanners vuln ^
                               --severity HIGH,CRITICAL ^
@@ -264,6 +265,9 @@ pipeline {
                         script: '''
                             trivy image ^
                               --db-repository ghcr.io/aquasecurity/trivy-db:2 ^
+                              --db-repository public.ecr.aws/aquasecurity/trivy-db:2 ^
+                              --java-db-repository ghcr.io/aquasecurity/trivy-java-db:1 ^
+                              --java-db-repository public.ecr.aws/aquasecurity/trivy-java-db:1 ^
                               --timeout 15m ^
                               --scanners vuln ^
                               --severity HIGH,CRITICAL ^
@@ -307,3 +311,4 @@ pipeline {
         }
     }
 }
+```
