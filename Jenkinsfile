@@ -143,7 +143,7 @@ pipeline {
                         )
 
                         archiveArtifacts(
-                            artifacts: 'frontend/frontend-audit.json',
+                            artifacts: 'frontend-audit.json',
                             allowEmptyArchive: true
                         )
 
