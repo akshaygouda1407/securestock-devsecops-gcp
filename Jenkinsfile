@@ -17,8 +17,8 @@ pipeline {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
         CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.cmd'
 
-        // Add tool directories without overwriting Jenkins/Maven PATH entries.
         PATH = "C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;${env.PATH}"
+
         SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/migration_dest'
         SPRING_DATASOURCE_USERNAME = 'postgres'
         SPRING_DATASOURCE_PASSWORD = 'cisco'
@@ -42,6 +42,7 @@ pipeline {
                 bat 'docker --version'
                 bat 'gitleaks version'
                 bat 'trivy --version'
+                bat '"%CHECKOV_EXE%" --version'
             }
         }
 
@@ -63,13 +64,25 @@ pipeline {
             steps {
                 script {
                     if (fileExists('terraform')) {
-                        bat '"%CHECKOV_EXE%" --version'
+                        int checkovStatus = bat(
+                            returnStatus: true,
+                            script: '''
+                                "%CHECKOV_EXE%" ^
+                                  -d terraform ^
+                                  --framework terraform ^
+                                  --output json ^
+                                  --output-file-path console,checkov-report.json
+                            '''
+                        )
 
-                        bat '''
-                            "%CHECKOV_EXE%" ^
-                              -d terraform ^
-                              --framework terraform
-                        '''
+                        archiveArtifacts(
+                            artifacts: 'checkov-report.json',
+                            allowEmptyArchive: true
+                        )
+
+                        if (checkovStatus != 0) {
+                            error('Checkov Terraform security scan failed. Review the scan output and checkov-report.json.')
+                        }
                     } else {
                         echo 'No terraform directory found. Terraform scan skipped.'
                     }
@@ -93,6 +106,7 @@ pipeline {
                     }
                 }
             }
+
             post {
                 always {
                     junit(
@@ -135,23 +149,23 @@ pipeline {
 
         stage('Frontend Security Audit') {
             steps {
-                dir('frontend') {
-                    script {
-                        int auditStatus = bat(
+                script {
+                    int auditStatus
+
+                    dir('frontend') {
+                        auditStatus = bat(
                             returnStatus: true,
-                            script: 'npm.cmd audit --audit-level=high --json > frontend-audit.json'
+                            script: 'npm.cmd audit --audit-level=high --json > ..\\frontend-audit.json'
                         )
+                    }
 
-                        archiveArtifacts(
-                            artifacts: 'frontend-audit.json',
-                            allowEmptyArchive: true
-                        )
+                    archiveArtifacts(
+                        artifacts: 'frontend-audit.json',
+                        allowEmptyArchive: true
+                    )
 
-                        if (auditStatus != 0) {
-                            error(
-                                'npm audit failed or found HIGH/CRITICAL vulnerabilities. Review frontend-audit.json.'
-                            )
-                        }
+                    if (auditStatus != 0) {
+                        error('Frontend npm audit failed or found HIGH/CRITICAL vulnerabilities. Download frontend-audit.json from the build artifacts and inspect it.')
                     }
                 }
             }
@@ -237,9 +251,7 @@ pipeline {
                     )
 
                     if (backendScanStatus != 0 || frontendScanStatus != 0) {
-                        error(
-                            'Trivy scan failed or found HIGH/CRITICAL vulnerabilities. Review the scan output and archived reports.'
-                        )
+                        error('Trivy scan failed or found HIGH/CRITICAL vulnerabilities. Review the console output and archived reports.')
                     }
                 }
             }
@@ -256,7 +268,7 @@ pipeline {
         }
 
         aborted {
-            echo 'SecureStock CI/CD pipeline was aborted or timed out.'
+            echo 'SecureStock pipeline was aborted or timed out.'
         }
 
         always {
