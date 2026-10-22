@@ -15,9 +15,10 @@ pipeline {
 
     environment {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
+
         CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.cmd'
 
-        PATH = "C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;${env.PATH}"
+        PATH = "C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;${env.PATH}"
 
         SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/migration_dest'
         SPRING_DATASOURCE_USERNAME = 'postgres'
@@ -64,6 +65,7 @@ pipeline {
             steps {
                 script {
                     if (fileExists('terraform')) {
+
                         int checkovStatus = bat(
                             returnStatus: true,
                             script: '''
@@ -83,6 +85,7 @@ pipeline {
                         if (checkovStatus != 0) {
                             error('Checkov Terraform security scan failed. Review the scan output and checkov-report.json.')
                         }
+
                     } else {
                         echo 'No terraform directory found. Terraform scan skipped.'
                     }
@@ -223,6 +226,8 @@ pipeline {
                         returnStatus: true,
                         script: '''
                             trivy image ^
+                              --db-repository ghcr.io/aquasecurity/trivy-db:2 ^
+                              --timeout 15m ^
                               --scanners vuln ^
                               --severity HIGH,CRITICAL ^
                               --exit-code 1 ^
@@ -236,6 +241,8 @@ pipeline {
                         returnStatus: true,
                         script: '''
                             trivy image ^
+                              --db-repository ghcr.io/aquasecurity/trivy-db:2 ^
+                              --timeout 15m ^
                               --scanners vuln ^
                               --severity HIGH,CRITICAL ^
                               --exit-code 1 ^
