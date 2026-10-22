@@ -15,7 +15,6 @@ pipeline {
 
     environment {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
-
         CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.cmd'
 
         PATH = "C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;${env.PATH}"
@@ -35,7 +34,6 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
-
                 bat 'git --version'
                 bat 'java -version'
                 bat 'node --version'
@@ -154,53 +152,51 @@ pipeline {
                     int auditStatus = 1
                     boolean validAuditReport = false
 
-                    dir('frontend') {
-                        for (int attempt = 1; attempt <= 3; attempt++) {
-                            echo "Running frontend security audit (attempt ${attempt}/3)"
+                    for (int attempt = 1; attempt <= 3; attempt++) {
+                        echo "Running frontend security audit (attempt ${attempt}/3)"
 
+                        dir('frontend') {
                             auditStatus = bat(
                                 returnStatus: true,
-                                script: 'npm.cmd audit --audit-level=high --json > ..\\frontend-audit.json'
+                                script: 'npm.cmd audit --audit-level=high --json > ..\\frontend-audit.json 2> ..\\frontend-audit-error.txt'
                             )
+                        }
 
-                            String report = fileExists('../frontend-audit.json')
-                                ? readFile('../frontend-audit.json')
-                                : ''
+                        int validationStatus = bat(
+                            returnStatus: true,
+                            script: '''
+                                powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ^
+                                  "$p = Join-Path (Get-Location) 'frontend-audit.json'; ^
+                                   if (-not (Test-Path $p)) { exit 1 }; ^
+                                   try { ^
+                                     $r = Get-Content -Raw $p | ConvertFrom-Json -ErrorAction Stop; ^
+                                     if ($null -ne $r.metadata -and $null -ne $r.metadata.vulnerabilities) { exit 0 } else { exit 1 } ^
+                                   } catch { exit 1 }"
+                            '''
+                        )
 
-                            try {
-                                def parsedReport = new groovy.json.JsonSlurperClassic().parseText(report)
+                        if (validationStatus == 0) {
+                            validAuditReport = true
+                            break
+                        }
 
-                                if (parsedReport instanceof Map &&
-                                    parsedReport.metadata instanceof Map &&
-                                    parsedReport.metadata.vulnerabilities instanceof Map) {
-                                    validAuditReport = true
-                                }
-                            } catch (Exception ignored) {
-                                validAuditReport = false
-                            }
-
-                            if (validAuditReport) {
-                                break
-                            }
-
-                            if (attempt < 3) {
-                                echo 'npm audit did not return a valid JSON report. Retrying in 20 seconds.'
-                                sleep time: 20, unit: 'SECONDS'
-                            }
+                        if (attempt < 3) {
+                            echo 'npm audit did not return a valid report. Retrying in 20 seconds.'
+                            sleep time: 20, unit: 'SECONDS'
                         }
                     }
 
                     archiveArtifacts(
-                        artifacts: 'frontend-audit.json',
+                        artifacts: 'frontend-audit.json,frontend-audit-error.txt',
                         allowEmptyArchive: true
                     )
 
                     if (!validAuditReport) {
-                        error('npm audit service did not return a valid report after 3 attempts. Check registry availability and the console output.')
+                        error('npm audit did not return a valid JSON report after 3 attempts. Inspect frontend-audit-error.txt and check npm registry availability.')
                     }
 
                     if (auditStatus != 0) {
-                        error('Frontend npm audit found HIGH/CRITICAL vulnerabilities or returned an audit failure. Review frontend-audit.json.')
+                        error('Frontend npm audit reported vulnerabilities at the configured severity threshold or another audit failure. Inspect frontend-audit.json.')
                     }
 
                     echo 'Frontend security audit passed.'
