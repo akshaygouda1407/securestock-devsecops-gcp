@@ -2,15 +2,23 @@
 pipeline {
     agent any
 
+    options {
+        timestamps()
+        skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+        timeout(time: 90, unit: 'MINUTES')
+    }
+
     tools {
         maven 'Maven-3'
     }
 
     environment {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
-        CHECKOV_PYTHON = 'E:\\checkov-venv\\Scripts\\python.exe'
+        CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.exe'
 
-        PATH = 'C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0'
+        // Add tool directories without overwriting Jenkins/Maven PATH entries.
+        'PATH+SECURESTOCK_TOOLS' = 'C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links'
 
         SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/migration_dest'
         SPRING_DATASOURCE_USERNAME = 'postgres'
@@ -27,17 +35,28 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+
                 bat 'git --version'
                 bat 'java -version'
                 bat 'node --version'
                 bat 'npm.cmd --version'
                 bat 'docker --version'
+                bat 'gitleaks version'
+                bat 'trivy --version'
             }
         }
 
         stage('GitLeaks Scan') {
             steps {
-                bat 'gitleaks detect --source . --no-git --redact --exit-code 1'
+                timeout(time: 10, unit: 'MINUTES') {
+                    bat '''
+                        gitleaks detect ^
+                          --source . ^
+                          --no-git ^
+                          --redact ^
+                          --exit-code 1
+                    '''
+                }
             }
         }
 
@@ -45,13 +64,15 @@ pipeline {
             steps {
                 script {
                     if (fileExists('terraform')) {
+                        bat '"%CHECKOV_EXE%" --version'
+
                         bat '''
-                            "%CHECKOV_PYTHON%" -m checkov ^
+                            "%CHECKOV_EXE%" ^
                               -d terraform ^
                               --framework terraform
                         '''
                     } else {
-                        echo 'No terraform directory found. Skipping Terraform scan.'
+                        echo 'No terraform directory found. Terraform scan skipped.'
                     }
                 }
             }
@@ -66,8 +87,10 @@ pipeline {
                         'SPRING_DATASOURCE_PASSWORD=cisco',
                         'JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Kolkata'
                     ]) {
-                        bat 'mvn -version'
-                        bat 'mvn test'
+                        timeout(time: 15, unit: 'MINUTES') {
+                            bat 'mvn -version'
+                            bat 'mvn test'
+                        }
                     }
                 }
             }
@@ -84,7 +107,9 @@ pipeline {
         stage('Backend Build') {
             steps {
                 dir('backend') {
-                    bat 'mvn clean package -DskipTests'
+                    timeout(time: 15, unit: 'MINUTES') {
+                        bat 'mvn clean package -DskipTests'
+                    }
                 }
             }
         }
@@ -124,7 +149,9 @@ pipeline {
                         )
 
                         if (auditStatus != 0) {
-                            error('Frontend npm audit failed. Check frontend-audit.json.')
+                            error(
+                                'npm audit failed or found HIGH/CRITICAL vulnerabilities. Review frontend-audit.json.'
+                            )
                         }
                     }
                 }
@@ -143,20 +170,34 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                echo 'SonarQube analysis is currently disabled.'
+                echo 'SonarQube analysis is not configured and remains disabled.'
             }
         }
 
         stage('OWASP Dependency Check') {
             steps {
-                echo 'OWASP Dependency Check is currently disabled.'
+                echo 'OWASP Dependency Check is not configured and remains disabled.'
             }
         }
 
         stage('Docker Image Build') {
             steps {
-                bat 'docker build -t %BACKEND_IMAGE% -f backend/Dockerfile backend'
-                bat 'docker build -t %FRONTEND_IMAGE% -f frontend/Dockerfile frontend'
+                bat 'docker version'
+
+                bat '''
+                    docker build ^
+                      -t %BACKEND_IMAGE% ^
+                      -f backend/Dockerfile ^
+                      backend
+                '''
+
+                bat '''
+                    docker build ^
+                      -t %FRONTEND_IMAGE% ^
+                      -f frontend/Dockerfile ^
+                      frontend
+                '''
+
                 bat 'docker image ls securestock-backend'
                 bat 'docker image ls securestock-frontend'
             }
@@ -171,8 +212,6 @@ pipeline {
                             trivy image ^
                               --scanners vuln ^
                               --severity HIGH,CRITICAL ^
-                              --skip-db-update ^
-                              --skip-java-db-update ^
                               --exit-code 1 ^
                               --format json ^
                               --output backend-trivy-report.json ^
@@ -186,8 +225,6 @@ pipeline {
                             trivy image ^
                               --scanners vuln ^
                               --severity HIGH,CRITICAL ^
-                              --skip-db-update ^
-                              --skip-java-db-update ^
                               --exit-code 1 ^
                               --format json ^
                               --output frontend-trivy-report.json ^
@@ -201,7 +238,9 @@ pipeline {
                     )
 
                     if (backendScanStatus != 0 || frontendScanStatus != 0) {
-                        error('Trivy found HIGH/CRITICAL vulnerabilities or encountered a scan error. Review the reports.')
+                        error(
+                            'Trivy scan failed or found HIGH/CRITICAL vulnerabilities. Review the scan output and archived reports.'
+                        )
                     }
                 }
             }
@@ -214,11 +253,11 @@ pipeline {
         }
 
         failure {
-            echo 'SecureStock CI/CD pipeline failed. Check the failed stage in Console Output.'
+            echo 'SecureStock CI/CD pipeline failed. Review the first failing stage and its console output.'
         }
 
         aborted {
-            echo 'SecureStock CI/CD pipeline was aborted.'
+            echo 'SecureStock CI/CD pipeline was aborted or timed out.'
         }
 
         always {
