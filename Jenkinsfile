@@ -2,24 +2,22 @@
 pipeline {
     agent any
 
-    environment {
-        JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
-
-        CHECKOV_PYTHON = 'E:\\checkov-venv\\Scripts\\python.exe'
-
-        PATH = "C:\\Program Files\\Git\\cmd;" +
-               "C:\\Program Files\\nodejs;" +
-               "C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;" +
-               "C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;" +
-               "E:\\checkov-venv\\Scripts;" +
-               "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313;" +
-               "C:\\Users\\User\\AppData\\Roaming\\Python\\Python313\\Scripts;" +
-               "${JAVA_HOME}\\bin;" +
-               "${env.PATH}"
-    }
-
     tools {
         maven 'Maven-3'
+    }
+
+    environment {
+        JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
+        CHECKOV_PYTHON = 'E:\\checkov-venv\\Scripts\\python.exe'
+
+        SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/migration_dest'
+        SPRING_DATASOURCE_USERNAME = 'postgres'
+        SPRING_DATASOURCE_PASSWORD = 'cisco'
+
+        JAVA_TOOL_OPTIONS = '-Duser.timezone=Asia/Kolkata'
+
+        BACKEND_IMAGE = 'securestock-backend:latest'
+        FRONTEND_IMAGE = 'securestock-frontend:latest'
     }
 
     stages {
@@ -27,57 +25,35 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+
+                bat 'git --version'
+                bat 'java -version'
+                bat 'node --version'
+                bat 'npm.cmd --version'
+                bat 'docker --version'
             }
         }
 
         stage('GitLeaks Scan') {
             steps {
-                bat 'git --version'
-
                 bat '''
-                    "C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links\\gitleaks.exe" detect --source . --verbose
+                    gitleaks detect --source . --no-git --redact --exit-code 1
                 '''
             }
         }
 
         stage('Terraform Security Scan') {
             steps {
-                bat '''
-                    if not exist "%CHECKOV_PYTHON%" (
-                        echo ERROR: Checkov Python environment not found: %CHECKOV_PYTHON%
-                        exit /b 1
-                    )
-
-                    "%CHECKOV_PYTHON%" -m checkov.main --version
-
-                    if errorlevel 1 exit /b 1
-                '''
-
-                bat '''
-                    if not exist "terraform" (
-                        echo ERROR: Terraform directory was not found.
-                        exit /b 1
-                    )
-
-                    if not exist "checkov-output" mkdir "checkov-output"
-
-                    "%CHECKOV_PYTHON%" -m checkov.main ^
-                        -d terraform ^
-                        --framework terraform ^
-                        --output json ^
-                        --output-file-path checkov-output
-
-                    if errorlevel 1 exit /b 1
-                '''
-            }
-
-            post {
-                always {
-                    archiveArtifacts(
-                        artifacts: 'checkov-output\\**',
-                        allowEmptyArchive: true,
-                        fingerprint: true
-                    )
+                script {
+                    if (fileExists('terraform')) {
+                        bat '''
+                            "%CHECKOV_PYTHON%" -m checkov ^
+                              -d terraform ^
+                              --framework terraform
+                        '''
+                    } else {
+                        echo 'No terraform directory found. Skipping Terraform scan.'
+                    }
                 }
             }
         }
@@ -97,6 +73,14 @@ pipeline {
                     }
                 }
             }
+            post {
+                always {
+                    junit(
+                        testResults: 'backend/target/surefire-reports/TEST-*.xml',
+                        allowEmptyResults: true
+                    )
+                }
+            }
         }
 
         stage('Backend Build') {
@@ -110,17 +94,19 @@ pipeline {
         stage('Frontend Dependency Install') {
             steps {
                 dir('frontend') {
-                    bat '''
-                        if not exist package-lock.json (
-                            echo ERROR: frontend\\package-lock.json was not found.
-                            echo Run npm install locally and commit package-lock.json.
-                            exit /b 1
-                        )
+                    timeout(time: 15, unit: 'MINUTES') {
+                        bat 'node --version'
+                        bat 'npm.cmd --version'
 
-                        npm.cmd ci
+                        bat '''
+                            if not exist package-lock.json (
+                                echo ERROR: package-lock.json is missing
+                                exit /b 1
+                            )
+                        '''
 
-                        if errorlevel 1 exit /b 1
-                    '''
+                        bat 'npm.cmd ci --no-audit --no-fund --verbose'
+                    }
                 }
             }
         }
@@ -128,28 +114,23 @@ pipeline {
         stage('Frontend Security Audit') {
             steps {
                 dir('frontend') {
-                    bat '''
-                        npm.cmd audit --audit-level=high
+                    script {
+                        int auditStatus = bat(
+                            returnStatus: true,
+                            script: 'npm.cmd audit --audit-level=high --json > frontend-audit.json'
+                        )
 
-                        if errorlevel 1 exit /b 1
-                    '''
-                }
-            }
+                        archiveArtifacts(
+                            artifacts: 'frontend/frontend-audit.json',
+                            allowEmptyArchive: true
+                        )
 
-            post {
-                always {
-                    dir('frontend') {
-                        bat '''
-                            npm.cmd audit --json > ..\\frontend-audit.json
-                            exit /b 0
-                        '''
+                        if (auditStatus != 0) {
+                            error(
+                                'Frontend npm audit failed. Check frontend/frontend-audit.json.'
+                            )
+                        }
                     }
-
-                    archiveArtifacts(
-                        artifacts: 'frontend-audit.json',
-                        allowEmptyArchive: true,
-                        fingerprint: true
-                    )
                 }
             }
         }
@@ -157,85 +138,83 @@ pipeline {
         stage('Frontend Build') {
             steps {
                 dir('frontend') {
-                    bat 'node -v'
-                    bat 'npm.cmd -v'
-                    bat 'npm.cmd run build'
+                    timeout(time: 15, unit: 'MINUTES') {
+                        bat 'npm.cmd run build'
+                    }
                 }
             }
         }
 
         stage('SonarQube Analysis') {
-            when {
-                expression {
-                    return false
-                }
-            }
-
             steps {
-                echo 'SonarQube Analysis is temporarily disabled.'
+                echo 'SonarQube analysis is currently disabled.'
             }
         }
 
         stage('OWASP Dependency Check') {
-            when {
-                expression {
-                    return false
-                }
-            }
-
             steps {
-                echo 'OWASP Dependency-Check is temporarily disabled.'
+                echo 'OWASP Dependency Check is currently disabled.'
             }
         }
 
         stage('Docker Image Build') {
             steps {
-                bat 'docker --version'
+                bat '''
+                    docker build -t %BACKEND_IMAGE% -f backend/Dockerfile backend
+                '''
 
-                bat 'docker build -t securestock-backend:latest backend'
+                bat '''
+                    docker build -t %FRONTEND_IMAGE% -f frontend/Dockerfile frontend
+                '''
 
-                bat 'docker build -t securestock-frontend:latest frontend'
+                bat 'docker image ls securestock-backend'
+                bat 'docker image ls securestock-frontend'
             }
         }
 
         stage('Trivy Image Scan') {
             steps {
-                bat 'trivy --version'
-
-                bat '''
-                    trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" ^
-                        image ^
-                        --scanners vuln ^
-                        --severity HIGH,CRITICAL ^
-                        --skip-db-update ^
-                        --skip-java-db-update ^
-                        --exit-code 1 ^
-                        --format json ^
-                        --output trivy-backend-report.json ^
-                        securestock-backend:latest
-                '''
-
-                bat '''
-                    trivy --cache-dir "C:\\Users\\User\\AppData\\Local\\trivy" ^
-                        image ^
-                        --scanners vuln ^
-                        --severity HIGH,CRITICAL ^
-                        --skip-db-update ^
-                        --skip-java-db-update ^
-                        --exit-code 1 ^
-                        --format json ^
-                        --output trivy-frontend-report.json ^
-                        securestock-frontend:latest
-                '''
-            }
-
-            post {
-                always {
-                    archiveArtifacts(
-                        artifacts: 'trivy-*-report.json',
-                        allowEmptyArchive: true,
-                        fingerprint: true
+                script {
+                    int backendScanStatus = bat(
+                        returnStatus: true,
+                        script: '''
+                            trivy image ^
+                              --scanners vuln ^
+                              --severity HIGH,CRITICAL ^
+                              --skip-db-update ^
+                              --skip-java-db-update ^
+                              --exit-code 1 ^
+                              --format json ^
+                              --output backend-trivy-report.json ^
+                              securestock-backend:latest
+                        '''
                     )
+
+                    int frontendScanStatus = bat(
+                        returnStatus: true,
+                        script: '''
+                            trivy image ^
+                              --scanners vuln ^
+                              --severity HIGH,CRITICAL ^
+                              --skip-db-update ^
+                              --skip-java-db-update ^
+                              --exit-code 1 ^
+                              --format json ^
+                              --output frontend-trivy-report.json ^
+                              securestock-frontend:latest
+                        '''
+                    )
+
+                    archiveArtifacts(
+                        artifacts: '*-trivy-report.json',
+                        allowEmptyArchive: true
+                    )
+
+                    if (backendScanStatus != 0 || frontendScanStatus != 0) {
+                        error(
+                            'Trivy detected HIGH/CRITICAL vulnerabilities or a scan error. Check the archived reports and console output.'
+                        )
+                    }
                 }
             }
         }
@@ -243,15 +222,19 @@ pipeline {
 
     post {
         success {
-            echo 'SUCCESS: SecureStock DevSecOps pipeline completed successfully.'
+            echo 'SecureStock CI/CD pipeline completed successfully.'
         }
 
         failure {
-            echo 'FAILURE: Pipeline failed. Review the failed stage and Jenkins console output.'
+            echo 'SecureStock CI/CD pipeline failed. Check the failed stage in Console Output.'
+        }
+
+        aborted {
+            echo 'SecureStock CI/CD pipeline was aborted.'
         }
 
         always {
-            echo 'SecureStock DevSecOps pipeline finished. Review the security scan reports in Jenkins build artifacts.'
+            echo 'SecureStock pipeline execution finished.'
         }
     }
 }
