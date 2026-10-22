@@ -18,8 +18,7 @@ pipeline {
         CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.exe'
 
         // Add tool directories without overwriting Jenkins/Maven PATH entries.
-        'PATH+SECURESTOCK_TOOLS' = 'C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links'
-
+        PATH = "C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;${env.PATH}"
         SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/migration_dest'
         SPRING_DATASOURCE_USERNAME = 'postgres'
         SPRING_DATASOURCE_PASSWORD = 'cisco'
