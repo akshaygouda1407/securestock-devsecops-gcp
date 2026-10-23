@@ -16,12 +16,11 @@ pipeline {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
         CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.cmd'
 
-        PATH = "C:\\Windows\\System32;C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\User\\AppData\\Local\\WinGet\\Links;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;${env.PATH}"
+        PATH = "C:\\Windows\\System32;C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;C:\\Program Files\\WindowsApps;${env.PATH}"
 
         SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/migration_dest'
         SPRING_DATASOURCE_USERNAME = 'postgres'
         SPRING_DATASOURCE_PASSWORD = 'cisco'
-        JAVA_TOOL_OPTIONS = '-Duser.timezone=Asia/Kolkata'
 
         BACKEND_IMAGE = 'securestock-backend:latest'
         FRONTEND_IMAGE = 'securestock-frontend:latest'
@@ -32,58 +31,50 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
+                deleteDir()
                 checkout scm
-                bat 'git --version'
-                bat 'java -version'
-                bat 'node --version'
-                bat 'npm.cmd --version'
-                bat 'docker --version'
-                bat 'gitleaks version'
-                bat 'trivy --version'
-                bat '"%CHECKOV_EXE%" --version'
+
+                bat '''
+                    @echo off
+                    echo ===== Tool Versions =====
+                    git --version
+                    java -version
+                    mvn -version
+                    node --version
+                    npm --version
+                    docker --version
+                    trivy --version
+                    gitleaks version
+                    echo =========================
+                '''
             }
         }
 
-        stage('GitLeaks Scan') {
+        stage('Gitleaks Secret Scan') {
             steps {
-                timeout(time: 10, unit: 'MINUTES') {
-                    bat '''
-                        gitleaks detect ^
-                          --source . ^
-                          --no-git ^
-                          --redact ^
-                          --exit-code 1
-                    '''
-                }
+                bat '''
+                    @echo off
+                    gitleaks detect --source . --no-git --redact --exit-code 1
+                '''
             }
         }
 
-        stage('Terraform Security Scan') {
+        stage('Checkov Terraform Scan') {
             steps {
                 script {
                     if (fileExists('terraform')) {
-                        int checkovStatus = bat(
-                            returnStatus: true,
-                            script: '''
-                                "%CHECKOV_EXE%" ^
-                                  -d terraform ^
-                                  --framework terraform ^
-                                  --output json ^
-                                  --output-file-path console,checkov-report.json
-                            '''
-                        )
-
-                        archiveArtifacts(
-                            artifacts: 'checkov-report.json',
-                            allowEmptyArchive: true
-                        )
-
-                        if (checkovStatus != 0) {
-                            error('Checkov Terraform security scan failed. Review checkov-report.json.')
-                        }
+                        bat '''
+                            @echo off
+                            "%CHECKOV_EXE%" -d terraform --framework terraform -o json --output-file-path checkov-report.json
+                        '''
                     } else {
-                        echo 'No terraform directory found. Terraform scan skipped.'
+                        echo 'No terraform directory found; skipping Checkov.'
                     }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'checkov-report.json', allowEmptyArchive: true
                 }
             }
         }
@@ -91,25 +82,15 @@ pipeline {
         stage('Backend Tests') {
             steps {
                 dir('backend') {
-                    withEnv([
-                        'SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/migration_dest',
-                        'SPRING_DATASOURCE_USERNAME=postgres',
-                        'SPRING_DATASOURCE_PASSWORD=cisco',
-                        'JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Kolkata'
-                    ]) {
-                        timeout(time: 15, unit: 'MINUTES') {
-                            bat 'mvn -version'
-                            bat 'mvn test'
-                        }
-                    }
+                    bat '''
+                        @echo off
+                        call mvnw.cmd -B test
+                    '''
                 }
             }
             post {
                 always {
-                    junit(
-                        testResults: 'backend/target/surefire-reports/TEST-*.xml',
-                        allowEmptyResults: true
-                    )
+                    junit testResults: 'backend/target/surefire-reports/*.xml', allowEmptyResults: true
                 }
             }
         }
@@ -117,9 +98,10 @@ pipeline {
         stage('Backend Build') {
             steps {
                 dir('backend') {
-                    timeout(time: 15, unit: 'MINUTES') {
-                        bat 'mvn clean package -DskipTests'
-                    }
+                    bat '''
+                        @echo off
+                        call mvnw.cmd -B clean package -DskipTests
+                    '''
                 }
             }
         }
@@ -127,69 +109,70 @@ pipeline {
         stage('Frontend Dependency Install') {
             steps {
                 dir('frontend') {
-                    timeout(time: 15, unit: 'MINUTES') {
-                        bat 'node --version'
-                        bat 'npm.cmd --version'
-
-                        bat '''
-                            if not exist package-lock.json (
-                                echo ERROR: package-lock.json is missing
-                                exit /b 1
-                            )
-                        '''
-
-                        bat 'npm.cmd ci --no-audit --no-fund'
-                    }
+                    bat '''
+                        @echo off
+                        npm ci --no-audit --no-fund
+                    '''
                 }
             }
         }
 
         stage('Frontend Security Audit') {
             steps {
-                script {
-                    int auditStatus = 1
-                    boolean validAuditReport = false
+                dir('frontend') {
+                    script {
+                        int attempts = 3
+                        boolean validJson = false
 
-                    for (int attempt = 1; attempt <= 3; attempt++) {
-                        echo "Running frontend security audit (attempt ${attempt}/3)"
+                        for (int i = 1; i <= attempts; i++) {
+                            echo "Running npm audit attempt ${i} of ${attempts}"
 
-                        dir('frontend') {
-                            auditStatus = bat(
+                            int result = bat(
                                 returnStatus: true,
-                                script: 'npm.cmd audit --audit-level=high --json > ..\\frontend-audit.json 2> ..\\frontend-audit-error.txt'
+                                script: '''
+                                    @echo off
+                                    npm audit --audit-level=high --json > npm-audit-report.json 2> npm-audit-error.txt
+                                    exit /b 0
+                                '''
                             )
+
+                            result = bat(
+                                returnStatus: true,
+                                script: '''
+                                    @echo off
+                                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-Content 'npm-audit-report.json' -Raw; try { $null = $p | ConvertFrom-Json -ErrorAction Stop; exit 0 } catch { exit 1 }"
+                                '''
+                            )
+
+                            if (result == 0) {
+                                validJson = true
+                                break
+                            }
+
+                            echo 'npm audit did not produce valid JSON.'
                         }
 
-                        int validationStatus = bat(
+                        if (!validJson) {
+                            error('npm audit failed to produce valid JSON after three attempts. See archived reports.')
+                        }
+
+                        int auditStatus = bat(
                             returnStatus: true,
-                            script: '''node -e "try { const r = JSON.parse(require('fs').readFileSync('frontend-audit.json', 'utf8')); process.exit(r.metadata && r.metadata.vulnerabilities ? 0 : 1); } catch (e) { process.exit(1); }"'''
+                            script: '''
+                                @echo off
+                                npm audit --audit-level=high
+                            '''
                         )
 
-                        if (validationStatus == 0) {
-                            validAuditReport = true
-                            break
-                        }
-
-                        if (attempt < 3) {
-                            echo 'npm audit returned invalid JSON. Retrying in 20 seconds.'
-                            sleep time: 20, unit: 'SECONDS'
+                        if (auditStatus != 0) {
+                            error('npm audit reported HIGH or CRITICAL vulnerabilities, or could not complete successfully.')
                         }
                     }
-
-                    archiveArtifacts(
-                        artifacts: 'frontend-audit.json,frontend-audit-error.txt',
-                        allowEmptyArchive: true
-                    )
-
-                    if (!validAuditReport) {
-                        error('npm audit did not return a valid JSON report after 3 attempts. Inspect the archived audit files.')
-                    }
-
-                    if (auditStatus != 0) {
-                        error('Frontend npm audit reported HIGH/CRITICAL vulnerabilities or another audit failure. Inspect frontend-audit.json.')
-                    }
-
-                    echo 'Frontend security audit passed.'
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'frontend/npm-audit-report.json,frontend/npm-audit-error.txt', allowEmptyArchive: true
                 }
             }
         }
@@ -197,177 +180,126 @@ pipeline {
         stage('Frontend Build') {
             steps {
                 dir('frontend') {
-                    timeout(time: 15, unit: 'MINUTES') {
-                        bat 'npm.cmd run build'
-                    }
+                    bat '''
+                        @echo off
+                        npm run build
+                    '''
                 }
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                echo 'SonarQube analysis is not configured. This stage is currently a placeholder.'
+                echo 'PLACEHOLDER: SonarQube analysis is not configured. No SonarQube scan was performed.'
             }
         }
 
         stage('OWASP Dependency Check') {
             steps {
-                echo 'OWASP Dependency Check is not configured. This stage is currently a placeholder.'
+                echo 'PLACEHOLDER: OWASP Dependency-Check is not configured. No OWASP Dependency-Check scan was performed.'
             }
         }
 
         stage('Docker Image Build') {
             steps {
-                bat 'docker version'
-
                 bat '''
-                    docker build ^
-                      -t %BACKEND_IMAGE% ^
-                      -f backend/Dockerfile ^
-                      backend
-                '''
+                    @echo off
+                    docker build -t "%BACKEND_IMAGE%" -f backend/Dockerfile backend
+                    if errorlevel 1 exit /b 1
 
-                bat '''
-                    docker build ^
-                      -t %FRONTEND_IMAGE% ^
-                      -f frontend/Dockerfile ^
-                      frontend
-                '''
+                    docker build -t "%FRONTEND_IMAGE%" -f frontend/Dockerfile frontend
+                    if errorlevel 1 exit /b 1
 
-                bat 'docker image ls securestock-backend'
-                bat 'docker image ls securestock-frontend'
+                    docker image ls "%BACKEND_IMAGE%"
+                    docker image ls "%FRONTEND_IMAGE%"
+                '''
             }
         }
 
-        stage('Trivy Database Preparation') {
+        stage('Trivy Database Cache Verification') {
             steps {
-                script {
-                    bat '''
-                        if not exist "%TRIVY_CACHE_DIR%" (
-                            mkdir "%TRIVY_CACHE_DIR%"
-                            if errorlevel 1 exit /b 1
-                        )
-                    '''
+                bat '''
+                    @echo off
+                    set "CACHE=%TRIVY_CACHE_DIR%"
 
-                    bat 'echo Trivy cache directory: %TRIVY_CACHE_DIR%'
-                    bat 'echo Windows system directory: %WINDIR%'
-                    bat 'echo USERPROFILE=%USERPROFILE%'
-                    bat 'echo LOCALAPPDATA=%LOCALAPPDATA%'
+                    if not exist "%CACHE%\\db\\metadata.json" (
+                        echo ERROR: Trivy vulnerability DB metadata is missing.
+                        exit /b 1
+                    )
 
-                    // Download the main vulnerability DB with retries.
-                    int mainDbStatus = 1
+                    if not exist "%CACHE%\\db\\trivy.db" (
+                        echo ERROR: Trivy vulnerability DB file is missing.
+                        exit /b 1
+                    )
 
-                    for (int attempt = 1; attempt <= 3; attempt++) {
-                        echo "Preparing Trivy vulnerability DB (attempt ${attempt}/3)"
+                    if not exist "%CACHE%\\java-db\\metadata.json" (
+                        echo ERROR: Trivy Java DB metadata is missing.
+                        exit /b 1
+                    )
 
-                        mainDbStatus = bat(
-                            returnStatus: true,
-                            script: '''
-                                trivy image ^
-                                  --cache-dir "%TRIVY_CACHE_DIR%" ^
-                                  --db-repository ghcr.io/aquasecurity/trivy-db:2 ^
-                                  --db-repository public.ecr.aws/aquasecurity/trivy-db:2 ^
-                                  --download-db-only ^
-                                  --timeout 15m
-                            '''
-                        )
+                    if not exist "%CACHE%\\java-db\\trivy-java.db" (
+                        echo ERROR: Trivy Java DB file is missing.
+                        exit /b 1
+                    )
 
-                        if (mainDbStatus == 0) {
-                            break
-                        }
+                    echo Trivy cache files exist.
+                    echo Vulnerability database metadata:
+                    type "%CACHE%\\db\\metadata.json"
+                    echo.
+                    echo Java database metadata:
+                    type "%CACHE%\\java-db\\metadata.json"
+                '''
+            }
+        }
 
-                        if (attempt < 3) {
-                            echo 'Main Trivy DB download failed. Retrying in 15 seconds.'
-                            sleep time: 15, unit: 'SECONDS'
-                        }
-                    }
+        stage('Trivy Backend Image Scan') {
+            steps {
+                bat '''
+                    @echo off
+                    trivy image ^
+                      --cache-dir "%TRIVY_CACHE_DIR%" ^
+                      --skip-db-update ^
+                      --skip-java-db-update ^
+                      --skip-version-check ^
+                      --scanners vuln ^
+                      --severity HIGH,CRITICAL ^
+                      --exit-code 1 ^
+                      --format json ^
+                      --output trivy-backend-report.json ^
+                      "%BACKEND_IMAGE%"
 
-                    if (mainDbStatus != 0) {
-                        error('Could not prepare the Trivy vulnerability database after 3 attempts.')
-                    }
-
-                    // Download the Java vulnerability DB with retries.
-                    int javaDbStatus = 1
-
-                    for (int attempt = 1; attempt <= 3; attempt++) {
-                        echo "Preparing Trivy Java DB (attempt ${attempt}/3)"
-
-                        javaDbStatus = bat(
-                            returnStatus: true,
-                            script: '''
-                                trivy image ^
-                                  --cache-dir "%TRIVY_CACHE_DIR%" ^
-                                  --java-db-repository ghcr.io/aquasecurity/trivy-java-db:1 ^
-                                  --java-db-repository public.ecr.aws/aquasecurity/trivy-java-db:1 ^
-                                  --download-java-db-only ^
-                                  --timeout 15m
-                            '''
-                        )
-
-                        if (javaDbStatus == 0) {
-                            break
-                        }
-
-                        if (attempt < 3) {
-                            echo 'Trivy Java DB download failed. Retrying in 15 seconds.'
-                            sleep time: 15, unit: 'SECONDS'
-                        }
-                    }
-
-                    if (javaDbStatus != 0) {
-                        error('Could not prepare the Trivy Java DB after 3 attempts. Check registry connectivity and console output.')
-                    }
-
-                    echo 'Trivy databases are ready in the persistent cache.'
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-backend-report.json', allowEmptyArchive: true
                 }
             }
         }
 
-        stage('Trivy Image Scan') {
+        stage('Trivy Frontend Image Scan') {
             steps {
-                script {
-                    int backendScanStatus = bat(
-                        returnStatus: true,
-                        script: '''
-                            trivy image ^
-                              --cache-dir "%TRIVY_CACHE_DIR%" ^
-                              --skip-db-update ^
-                              --skip-java-db-update ^
-                              --scanners vuln ^
-                              --severity HIGH,CRITICAL ^
-                              --exit-code 1 ^
-                              --format json ^
-                              --output backend-trivy-report.json ^
-                              "%BACKEND_IMAGE%"
-                        '''
-                    )
+                bat '''
+                    @echo off
+                    trivy image ^
+                      --cache-dir "%TRIVY_CACHE_DIR%" ^
+                      --skip-db-update ^
+                      --skip-java-db-update ^
+                      --skip-version-check ^
+                      --scanners vuln ^
+                      --severity HIGH,CRITICAL ^
+                      --exit-code 1 ^
+                      --format json ^
+                      --output trivy-frontend-report.json ^
+                      "%FRONTEND_IMAGE%"
 
-                    int frontendScanStatus = bat(
-                        returnStatus: true,
-                        script: '''
-                            trivy image ^
-                              --cache-dir "%TRIVY_CACHE_DIR%" ^
-                              --skip-db-update ^
-                              --skip-java-db-update ^
-                              --scanners vuln ^
-                              --severity HIGH,CRITICAL ^
-                              --exit-code 1 ^
-                              --format json ^
-                              --output frontend-trivy-report.json ^
-                              "%FRONTEND_IMAGE%"
-                        '''
-                    )
-
-                    archiveArtifacts(
-                        artifacts: '*-trivy-report.json',
-                        allowEmptyArchive: true
-                    )
-
-                    if (backendScanStatus != 0 || frontendScanStatus != 0) {
-                        error('Trivy scan failed or found HIGH/CRITICAL vulnerabilities. Review console output and archived reports.')
-                    }
-
-                    echo 'Backend and frontend Trivy scans passed.'
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-frontend-report.json', allowEmptyArchive: true
                 }
             }
         }
@@ -375,19 +307,15 @@ pipeline {
 
     post {
         success {
-            echo 'SecureStock CI/CD pipeline completed successfully.'
+            echo 'SecureStock pipeline completed successfully.'
         }
 
         failure {
-            echo 'SecureStock CI/CD pipeline failed. Review the first failing stage and its console output.'
-        }
-
-        aborted {
-            echo 'SecureStock pipeline was aborted or timed out.'
+            echo 'SecureStock pipeline failed. Review the stage logs and archived reports.'
         }
 
         always {
-            echo 'SecureStock pipeline execution finished.'
+            echo 'Pipeline execution finished.'
         }
     }
 }
