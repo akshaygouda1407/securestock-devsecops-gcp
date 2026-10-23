@@ -1,4 +1,3 @@
-
 pipeline {
     agent any
 
@@ -17,7 +16,9 @@ pipeline {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
         CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.cmd'
 
-        PATH = "C:\\Windows\\System32;C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\User\\AppData\\Local\\WinGet\\Links;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;${env.PATH}"        SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/migration_dest'
+        PATH = "C:\\Windows\\System32;C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\User\\AppData\\Local\\WinGet\\Links;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;${env.PATH}"
+
+        SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/migration_dest'
         SPRING_DATASOURCE_USERNAME = 'postgres'
         SPRING_DATASOURCE_PASSWORD = 'cisco'
         JAVA_TOOL_OPTIONS = '-Duser.timezone=Asia/Kolkata'
@@ -25,7 +26,6 @@ pipeline {
         BACKEND_IMAGE = 'securestock-backend:latest'
         FRONTEND_IMAGE = 'securestock-frontend:latest'
 
-        // Persistent cache outside the Jenkins workspace.
         TRIVY_CACHE_DIR = 'C:\\ProgramData\\Jenkins\\.jenkins\\trivy-cache'
     }
 
@@ -138,7 +138,7 @@ pipeline {
                             )
                         '''
 
-                        bat 'npm.cmd ci --no-audit --no-fund --verbose'
+                        bat 'npm.cmd ci --no-audit --no-fund'
                     }
                 }
             }
@@ -171,7 +171,7 @@ pipeline {
                         }
 
                         if (attempt < 3) {
-                            echo 'npm audit did not return valid JSON. Retrying in 20 seconds.'
+                            echo 'npm audit returned invalid JSON. Retrying in 20 seconds.'
                             sleep time: 20, unit: 'SECONDS'
                         }
                     }
@@ -242,13 +242,21 @@ pipeline {
         stage('Trivy Database Preparation') {
             steps {
                 script {
-                    bat 'if not exist "%TRIVY_CACHE_DIR%" mkdir "%TRIVY_CACHE_DIR%"'
+                    bat '''
+                        if not exist "%TRIVY_CACHE_DIR%" (
+                            mkdir "%TRIVY_CACHE_DIR%"
+                            if errorlevel 1 exit /b 1
+                        )
+                    '''
+
                     bat 'echo Trivy cache directory: %TRIVY_CACHE_DIR%'
-                    bat 'whoami'
+                    bat 'echo Windows system directory: %WINDIR%'
                     bat 'echo USERPROFILE=%USERPROFILE%'
                     bat 'echo LOCALAPPDATA=%LOCALAPPDATA%'
 
+                    // Download the main vulnerability DB with retries.
                     int mainDbStatus = 1
+
                     for (int attempt = 1; attempt <= 3; attempt++) {
                         echo "Preparing Trivy vulnerability DB (attempt ${attempt}/3)"
 
@@ -278,7 +286,9 @@ pipeline {
                         error('Could not prepare the Trivy vulnerability database after 3 attempts.')
                     }
 
+                    // Download the Java vulnerability DB with retries.
                     int javaDbStatus = 1
+
                     for (int attempt = 1; attempt <= 3; attempt++) {
                         echo "Preparing Trivy Java DB (attempt ${attempt}/3)"
 
@@ -305,7 +315,7 @@ pipeline {
                     }
 
                     if (javaDbStatus != 0) {
-                        error('Could not prepare the Trivy Java DB after 3 attempts. Check registry connectivity and the console output.')
+                        error('Could not prepare the Trivy Java DB after 3 attempts. Check registry connectivity and console output.')
                     }
 
                     echo 'Trivy databases are ready in the persistent cache.'
@@ -328,7 +338,7 @@ pipeline {
                               --exit-code 1 ^
                               --format json ^
                               --output backend-trivy-report.json ^
-                              securestock-backend:latest
+                              "%BACKEND_IMAGE%"
                         '''
                     )
 
@@ -344,7 +354,7 @@ pipeline {
                               --exit-code 1 ^
                               --format json ^
                               --output frontend-trivy-report.json ^
-                              securestock-frontend:latest
+                              "%FRONTEND_IMAGE%"
                         '''
                     )
 
@@ -354,7 +364,7 @@ pipeline {
                     )
 
                     if (backendScanStatus != 0 || frontendScanStatus != 0) {
-                        error('Trivy scan failed or found HIGH/CRITICAL vulnerabilities. Review the console output and archived reports.')
+                        error('Trivy scan failed or found HIGH/CRITICAL vulnerabilities. Review console output and archived reports.')
                     }
 
                     echo 'Backend and frontend Trivy scans passed.'
