@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -16,16 +17,18 @@ pipeline {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
         CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.cmd'
 
-        PATH = "C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;${env.PATH}"
+        PATH = "C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\User\\AppData\\Local\\WinGet\\Links;${env.PATH}"
 
         SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/migration_dest'
         SPRING_DATASOURCE_USERNAME = 'postgres'
         SPRING_DATASOURCE_PASSWORD = 'cisco'
-
         JAVA_TOOL_OPTIONS = '-Duser.timezone=Asia/Kolkata'
 
         BACKEND_IMAGE = 'securestock-backend:latest'
         FRONTEND_IMAGE = 'securestock-frontend:latest'
+
+        // Persistent cache outside the Jenkins workspace.
+        TRIVY_CACHE_DIR = 'C:\\ProgramData\\Jenkins\\.jenkins\\trivy-cache'
     }
 
     stages {
@@ -205,13 +208,13 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                echo 'SonarQube analysis is not configured and remains disabled.'
+                echo 'SonarQube analysis is not configured. This stage is currently a placeholder.'
             }
         }
 
         stage('OWASP Dependency Check') {
             steps {
-                echo 'OWASP Dependency Check is not configured and remains disabled.'
+                echo 'OWASP Dependency Check is not configured. This stage is currently a placeholder.'
             }
         }
 
@@ -238,6 +241,80 @@ pipeline {
             }
         }
 
+        stage('Trivy Database Preparation') {
+            steps {
+                script {
+                    bat 'if not exist "%TRIVY_CACHE_DIR%" mkdir "%TRIVY_CACHE_DIR%"'
+                    bat 'echo Trivy cache directory: %TRIVY_CACHE_DIR%'
+                    bat 'whoami'
+                    bat 'echo USERPROFILE=%USERPROFILE%'
+                    bat 'echo LOCALAPPDATA=%LOCALAPPDATA%'
+
+                    int mainDbStatus = 1
+                    for (int attempt = 1; attempt <= 3; attempt++) {
+                        echo "Preparing Trivy vulnerability DB (attempt ${attempt}/3)"
+
+                        mainDbStatus = bat(
+                            returnStatus: true,
+                            script: '''
+                                trivy image ^
+                                  --cache-dir "%TRIVY_CACHE_DIR%" ^
+                                  --db-repository ghcr.io/aquasecurity/trivy-db:2 ^
+                                  --db-repository public.ecr.aws/aquasecurity/trivy-db:2 ^
+                                  --download-db-only ^
+                                  --timeout 15m
+                            '''
+                        )
+
+                        if (mainDbStatus == 0) {
+                            break
+                        }
+
+                        if (attempt < 3) {
+                            echo 'Main Trivy DB download failed. Retrying in 15 seconds.'
+                            sleep time: 15, unit: 'SECONDS'
+                        }
+                    }
+
+                    if (mainDbStatus != 0) {
+                        error('Could not prepare the Trivy vulnerability database after 3 attempts.')
+                    }
+
+                    int javaDbStatus = 1
+                    for (int attempt = 1; attempt <= 3; attempt++) {
+                        echo "Preparing Trivy Java DB (attempt ${attempt}/3)"
+
+                        javaDbStatus = bat(
+                            returnStatus: true,
+                            script: '''
+                                trivy image ^
+                                  --cache-dir "%TRIVY_CACHE_DIR%" ^
+                                  --java-db-repository ghcr.io/aquasecurity/trivy-java-db:1 ^
+                                  --java-db-repository public.ecr.aws/aquasecurity/trivy-java-db:1 ^
+                                  --download-java-db-only ^
+                                  --timeout 15m
+                            '''
+                        )
+
+                        if (javaDbStatus == 0) {
+                            break
+                        }
+
+                        if (attempt < 3) {
+                            echo 'Trivy Java DB download failed. Retrying in 15 seconds.'
+                            sleep time: 15, unit: 'SECONDS'
+                        }
+                    }
+
+                    if (javaDbStatus != 0) {
+                        error('Could not prepare the Trivy Java DB after 3 attempts. Check registry connectivity and the console output.')
+                    }
+
+                    echo 'Trivy databases are ready in the persistent cache.'
+                }
+            }
+        }
+
         stage('Trivy Image Scan') {
             steps {
                 script {
@@ -245,11 +322,9 @@ pipeline {
                         returnStatus: true,
                         script: '''
                             trivy image ^
-                              --db-repository ghcr.io/aquasecurity/trivy-db:2 ^
-                              --db-repository public.ecr.aws/aquasecurity/trivy-db:2 ^
-                              --java-db-repository ghcr.io/aquasecurity/trivy-java-db:1 ^
-                              --java-db-repository public.ecr.aws/aquasecurity/trivy-java-db:1 ^
-                              --timeout 15m ^
+                              --cache-dir "%TRIVY_CACHE_DIR%" ^
+                              --skip-db-update ^
+                              --skip-java-db-update ^
                               --scanners vuln ^
                               --severity HIGH,CRITICAL ^
                               --exit-code 1 ^
@@ -263,11 +338,9 @@ pipeline {
                         returnStatus: true,
                         script: '''
                             trivy image ^
-                              --db-repository ghcr.io/aquasecurity/trivy-db:2 ^
-                              --db-repository public.ecr.aws/aquasecurity/trivy-db:2 ^
-                              --java-db-repository ghcr.io/aquasecurity/trivy-java-db:1 ^
-                              --java-db-repository public.ecr.aws/aquasecurity/trivy-java-db:1 ^
-                              --timeout 15m ^
+                              --cache-dir "%TRIVY_CACHE_DIR%" ^
+                              --skip-db-update ^
+                              --skip-java-db-update ^
                               --scanners vuln ^
                               --severity HIGH,CRITICAL ^
                               --exit-code 1 ^
