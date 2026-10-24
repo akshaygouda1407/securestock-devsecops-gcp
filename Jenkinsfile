@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -63,36 +64,46 @@ pipeline {
         stage('Checkov Terraform Scan') {
             steps {
                 script {
-                    if (fileExists('terraform')) {
-                        int checkovStatus = bat(
-                            returnStatus: true,
-                            script: '''
-                                @echo off
-                                if not exist "%CHECKOV_EXE%" (
-                                    echo ERROR: Checkov executable not found: %CHECKOV_EXE%
-                                    exit /b 2
-                                )
-                                "%CHECKOV_EXE%" -d terraform --framework terraform --output json --output-file-path console,checkov-report.json
-                            '''
-                        )
+                    if (!fileExists('terraform')) {
+                        error('Terraform directory not found in the Jenkins workspace.')
+                    }
 
-                        if (!fileExists('checkov-report.json')) {
-                            error('Checkov did not create checkov-report.json. Review the Checkov console output.')
-                        }
+                    int checkovStatus = bat(
+                        returnStatus: true,
+                        script: '''
+                            @echo off
+                            if exist "%WORKSPACE%\\checkov-report.json" del /f /q "%WORKSPACE%\\checkov-report.json"
+                            if exist "%WORKSPACE%\\checkov-console.log" del /f /q "%WORKSPACE%\\checkov-console.log"
 
-                        archiveArtifacts artifacts: 'checkov-report.json', fingerprint: true
+                            if not exist "%CHECKOV_EXE%" (
+                                echo ERROR: Checkov executable not found: %CHECKOV_EXE%
+                                exit /b 2
+                            )
 
-                        if (checkovStatus != 0) {
-                            error("Checkov reported a failure (exit code ${checkovStatus}). The JSON report has been archived.")
-                        }
+                            "%CHECKOV_EXE%" -d terraform --framework terraform --output json > "%WORKSPACE%\\checkov-report.json" 2> "%WORKSPACE%\\checkov-console.log"
+                            exit /b %ERRORLEVEL%
+                        '''
+                    )
+
+                    if (fileExists('checkov-report.json') && readFile('checkov-report.json').trim()) {
+                        echo 'Checkov JSON report generated.'
+                        archiveArtifacts artifacts: 'checkov-report.json,checkov-console.log', allowEmptyArchive: true, fingerprint: true
                     } else {
-                        echo 'No terraform directory found; skipping Checkov.'
+                        if (fileExists('checkov-console.log')) {
+                            echo 'Checkov diagnostic output:'
+                            echo readFile('checkov-console.log')
+                        }
+                        error('Checkov did not generate a non-empty checkov-report.json. Review the console output and archived diagnostics.')
+                    }
+
+                    if (checkovStatus != 0) {
+                        error("Checkov returned exit code ${checkovStatus}. Review checkov-report.json for findings.")
                     }
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'checkov-report.json', allowEmptyArchive: true, fingerprint: true
+                    archiveArtifacts artifacts: 'checkov-report.json,checkov-console.log', allowEmptyArchive: true, fingerprint: true
                 }
             }
         }
@@ -145,7 +156,7 @@ pipeline {
                         for (int i = 1; i <= attempts; i++) {
                             echo "Running npm audit attempt ${i} of ${attempts}"
 
-                            int result = bat(
+                            bat(
                                 returnStatus: true,
                                 script: '''
                                     @echo off
@@ -154,7 +165,7 @@ pipeline {
                                 '''
                             )
 
-                            result = bat(
+                            int jsonStatus = bat(
                                 returnStatus: true,
                                 script: '''
                                     @echo off
@@ -162,7 +173,7 @@ pipeline {
                                 '''
                             )
 
-                            if (result == 0) {
+                            if (jsonStatus == 0) {
                                 validJson = true
                                 break
                             }
