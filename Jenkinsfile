@@ -64,10 +64,27 @@ pipeline {
             steps {
                 script {
                     if (fileExists('terraform')) {
-                        bat '''
-                            @echo off
-                            "%CHECKOV_EXE%" -d terraform --framework terraform -o json --output-file-path checkov-report.json
-                        '''
+                        int checkovStatus = bat(
+                            returnStatus: true,
+                            script: '''
+                                @echo off
+                                if not exist "%CHECKOV_EXE%" (
+                                    echo ERROR: Checkov executable not found: %CHECKOV_EXE%
+                                    exit /b 2
+                                )
+                                "%CHECKOV_EXE%" -d terraform --framework terraform --output json --output-file-path console,checkov-report.json
+                            '''
+                        )
+
+                        if (!fileExists('checkov-report.json')) {
+                            error('Checkov did not create checkov-report.json. Review the Checkov console output.')
+                        }
+
+                        archiveArtifacts artifacts: 'checkov-report.json', fingerprint: true
+
+                        if (checkovStatus != 0) {
+                            error("Checkov reported a failure (exit code ${checkovStatus}). The JSON report has been archived.")
+                        }
                     } else {
                         echo 'No terraform directory found; skipping Checkov.'
                     }
@@ -75,7 +92,7 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'checkov-report.json', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'checkov-report.json', allowEmptyArchive: true, fingerprint: true
                 }
             }
         }
