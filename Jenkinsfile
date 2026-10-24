@@ -13,6 +13,7 @@ pipeline {
     }
 
     environment {
+        JAVA_TOOL_OPTIONS = '-Duser.timezone=Asia/Kolkata'
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
         CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.cmd'
 
