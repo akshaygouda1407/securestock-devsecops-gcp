@@ -1,4 +1,4 @@
-
+﻿
 pipeline {
     agent any
 
@@ -219,7 +219,19 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                echo 'PLACEHOLDER: SonarQube analysis is not configured. No SonarQube scan was performed.'
+                script {
+                    def scannerHome = tool 'SonarScanner'
+
+                    withSonarQubeEnv('SecureStock-SonarQube') {
+                        bat """
+                            @echo off
+                            echo ===== Starting SonarQube Analysis =====
+                            "${scannerHome}\\bin\\sonar-scanner.bat" -Dsonar.projectKey=securestock
+                            if errorlevel 1 exit /b 1
+                            echo ===== SonarQube Analysis Completed =====
+                        """
+                    }
+                }
             }
         }
 
