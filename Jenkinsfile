@@ -18,15 +18,10 @@ pipeline {
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
         CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.cmd'
 
-        PATH = "C:\\Windows\\System32;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;C:\\Program Files\\WindowsApps;${env.PATH}"
-
-        SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/migration_dest'
-        SPRING_DATASOURCE_USERNAME = 'postgres'
-        SPRING_DATASOURCE_PASSWORD = 'cisco'
+        PATH = "C:\\Windows\\System32;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;${env.PATH}"
 
         BACKEND_IMAGE = 'securestock-backend:latest'
         FRONTEND_IMAGE = 'securestock-frontend:latest'
-
         TRIVY_CACHE_DIR = 'C:\\ProgramData\\Jenkins\\.jenkins\\trivy-cache'
     }
 
@@ -38,7 +33,6 @@ pipeline {
 
                 bat '''
                     @echo off
-                    echo ===== Tool Versions =====
                     git --version
                     java -version
                     mvn -version
@@ -47,7 +41,6 @@ pipeline {
                     docker --version
                     trivy --version
                     gitleaks version
-                    echo =========================
                 '''
             }
         }
@@ -57,6 +50,7 @@ pipeline {
                 bat '''
                     @echo off
                     gitleaks detect --source . --no-git --redact --exit-code 1
+                    if errorlevel 1 exit /b 1
                 '''
             }
         }
@@ -85,41 +79,50 @@ pipeline {
                         '''
                     )
 
-                    if (fileExists('checkov-report.json') && readFile('checkov-report.json').trim()) {
-                        echo 'Checkov JSON report generated.'
-                        archiveArtifacts artifacts: 'checkov-report.json,checkov-console.log', allowEmptyArchive: true, fingerprint: true
-                    } else {
+                    if (!fileExists('checkov-report.json') ||
+                        !readFile('checkov-report.json').trim()) {
                         if (fileExists('checkov-console.log')) {
-                            echo 'Checkov diagnostic output:'
                             echo readFile('checkov-console.log')
                         }
-                        error('Checkov did not generate a non-empty checkov-report.json. Review the console output and archived diagnostics.')
+                        error('Checkov did not generate a non-empty JSON report.')
                     }
 
                     if (checkovStatus != 0) {
-                        error("Checkov returned exit code ${checkovStatus}. Review checkov-report.json for findings.")
+                        error("Checkov failed with exit code ${checkovStatus}. Review its report.")
                     }
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'checkov-report.json,checkov-console.log', allowEmptyArchive: true, fingerprint: true
+                    archiveArtifacts artifacts: 'checkov-report.json,checkov-console.log',
+                        allowEmptyArchive: true, fingerprint: true
                 }
             }
         }
 
         stage('Backend Tests') {
             steps {
-                dir('backend') {
-                    bat '''
-                        @echo off
-                        call mvnw.cmd -B test
-                    '''
+                withCredentials([usernamePassword(
+                    credentialsId: 'securestock-db-credentials',
+                    usernameVariable: 'DB_USER',
+                    passwordVariable: 'DB_PASSWORD'
+                )]) {
+                    dir('backend') {
+                        bat '''
+                            @echo off
+                            set "SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/migration_dest"
+                            set "SPRING_DATASOURCE_USERNAME=%DB_USER%"
+                            set "SPRING_DATASOURCE_PASSWORD=%DB_PASSWORD%"
+                            call mvnw.cmd -B test
+                            exit /b %ERRORLEVEL%
+                        '''
+                    }
                 }
             }
             post {
                 always {
-                    junit testResults: 'backend/target/surefire-reports/*.xml', allowEmptyResults: true
+                    junit testResults: 'backend/target/surefire-reports/*.xml',
+                        allowEmptyResults: true
                 }
             }
         }
@@ -130,6 +133,7 @@ pipeline {
                     bat '''
                         @echo off
                         call mvnw.cmd -B clean package -DskipTests
+                        if errorlevel 1 exit /b 1
                     '''
                 }
             }
@@ -141,6 +145,7 @@ pipeline {
                     bat '''
                         @echo off
                         npm ci --no-audit --no-fund
+                        if errorlevel 1 exit /b 1
                     '''
                 }
             }
@@ -150,17 +155,16 @@ pipeline {
             steps {
                 dir('frontend') {
                     script {
-                        int attempts = 3
                         boolean validJson = false
 
-                        for (int i = 1; i <= attempts; i++) {
-                            echo "Running npm audit attempt ${i} of ${attempts}"
+                        for (int attempt = 1; attempt <= 3; attempt++) {
+                            echo "Running npm audit report attempt ${attempt} of 3"
 
                             bat(
                                 returnStatus: true,
                                 script: '''
                                     @echo off
-                                    npm audit --audit-level=high --json > npm-audit-report.json 2> npm-audit-error.txt
+                                    npm audit --json > npm-audit-report.json 2> npm-audit-error.txt
                                     exit /b 0
                                 '''
                             )
@@ -182,7 +186,7 @@ pipeline {
                         }
 
                         if (!validJson) {
-                            error('npm audit failed to produce valid JSON after three attempts. See archived reports.')
+                            error('npm audit failed to produce valid JSON after three attempts.')
                         }
 
                         int auditStatus = bat(
@@ -194,14 +198,15 @@ pipeline {
                         )
 
                         if (auditStatus != 0) {
-                            error('npm audit reported HIGH or CRITICAL vulnerabilities, or could not complete successfully.')
+                            error('npm audit found high/critical vulnerabilities or failed.')
                         }
                     }
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'frontend/npm-audit-report.json,frontend/npm-audit-error.txt', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'frontend/npm-audit-report.json,frontend/npm-audit-error.txt',
+                        allowEmptyArchive: true
                 }
             }
         }
@@ -212,6 +217,7 @@ pipeline {
                     bat '''
                         @echo off
                         npm run build
+                        if errorlevel 1 exit /b 1
                     '''
                 }
             }
@@ -225,10 +231,14 @@ pipeline {
                     withSonarQubeEnv('SecureStock-SonarQube') {
                         bat """
                             @echo off
-                            echo ===== Starting SonarQube Analysis =====
-                            "${scannerHome}\\bin\\sonar-scanner.bat" -Dsonar.projectKey=securestock
+                            "${scannerHome}\\bin\\sonar-scanner.bat" ^
+                              -Dsonar.projectKey=securestock ^
+                              -Dsonar.projectName=SecureStock ^
+                              -Dsonar.sources=backend/src/main/java,frontend/src ^
+                              -Dsonar.java.binaries=backend/target/classes ^
+                              -Dsonar.sourceEncoding=UTF-8 ^
+                              -Dsonar.exclusions=frontend/node_modules/**,frontend/build/**,frontend/dist/**,**/target/**
                             if errorlevel 1 exit /b 1
-                            echo ===== SonarQube Analysis Completed =====
                         """
                     }
                 }
@@ -237,7 +247,24 @@ pipeline {
 
         stage('OWASP Dependency Check') {
             steps {
-                echo 'PLACEHOLDER: OWASP Dependency-Check is not configured. No OWASP Dependency-Check scan was performed.'
+                script {
+                    dependencyCheck(
+                        odcInstallation: 'OWASP-Dependency-Check',
+                        additionalArguments: '--scan backend --scan frontend --format ALL --out dependency-check-reports --noupdate'
+                    )
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'dependency-check-reports/**',
+                        allowEmptyArchive: true, fingerprint: true
+
+                    dependencyCheckPublisher(
+                        pattern: 'dependency-check-reports/dependency-check-report.xml',
+                        failedTotalHigh: 0,
+                        unstableTotalHigh: 10
+                    )
+                }
             }
         }
 
@@ -257,37 +284,51 @@ pipeline {
             }
         }
 
-        stage('Trivy Database Cache Verification') {
+        stage('Trivy Database Refresh') {
+            steps {
+                bat '''
+                    @echo off
+                    if not exist "%TRIVY_CACHE_DIR%" mkdir "%TRIVY_CACHE_DIR%"
+
+                    trivy image --cache-dir "%TRIVY_CACHE_DIR%" --download-db-only
+                    if errorlevel 1 exit /b 1
+
+                    trivy image --cache-dir "%TRIVY_CACHE_DIR%" --download-java-db-only
+                    if errorlevel 1 exit /b 1
+
+                    echo Trivy vulnerability databases refreshed.
+                '''
+            }
+        }
+
+        stage('Trivy Database Verification') {
             steps {
                 bat '''
                     @echo off
                     set "CACHE=%TRIVY_CACHE_DIR%"
 
                     if not exist "%CACHE%\\db\\metadata.json" (
-                        echo ERROR: Trivy vulnerability DB metadata is missing.
+                        echo ERROR: Trivy vulnerability database metadata is missing.
                         exit /b 1
                     )
 
                     if not exist "%CACHE%\\db\\trivy.db" (
-                        echo ERROR: Trivy vulnerability DB file is missing.
+                        echo ERROR: Trivy vulnerability database is missing.
                         exit /b 1
                     )
 
                     if not exist "%CACHE%\\java-db\\metadata.json" (
-                        echo ERROR: Trivy Java DB metadata is missing.
+                        echo ERROR: Trivy Java database metadata is missing.
                         exit /b 1
                     )
 
                     if not exist "%CACHE%\\java-db\\trivy-java.db" (
-                        echo ERROR: Trivy Java DB file is missing.
+                        echo ERROR: Trivy Java database is missing.
                         exit /b 1
                     )
 
-                    echo Trivy cache files exist.
-                    echo Vulnerability database metadata:
+                    echo Trivy database metadata:
                     type "%CACHE%\\db\\metadata.json"
-                    echo.
-                    echo Java database metadata:
                     type "%CACHE%\\java-db\\metadata.json"
                 '''
             }
@@ -314,7 +355,8 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'trivy-backend-report.json', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'trivy-backend-report.json',
+                        allowEmptyArchive: true
                 }
             }
         }
@@ -340,7 +382,8 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'trivy-frontend-report.json', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'trivy-frontend-report.json',
+                        allowEmptyArchive: true
                 }
             }
         }
@@ -348,15 +391,13 @@ pipeline {
 
     post {
         success {
-            echo 'SecureStock pipeline completed successfully.'
+            echo 'SecureStock CI and security pipeline completed successfully.'
         }
-
         failure {
-            echo 'SecureStock pipeline failed. Review the stage logs and archived reports.'
+            echo 'SecureStock pipeline failed. Review the failed stage and archived reports.'
         }
-
         always {
-            echo 'Pipeline execution finished.'
+            echo 'SecureStock pipeline execution finished.'
         }
     }
 }
