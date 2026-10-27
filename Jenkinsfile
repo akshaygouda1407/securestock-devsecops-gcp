@@ -20,6 +20,7 @@ pipeline {
         GITLEAKS_EXE = 'C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gitleaks.Gitleaks_Microsoft.Winget.Source_8wekyb3d8bbwe\\gitleaks.exe'
 
         TRIVY_EXE = 'C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Packages\\AquaSecurity.Trivy_Microsoft.Winget.Source_8wekyb3d8bbwe\\trivy.exe'
+
         PATH = "C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;C:\\Windows\\System32;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;${env.PATH}"
 
         BACKEND_IMAGE = 'securestock-backend:latest'
@@ -328,16 +329,28 @@ pipeline {
                         exit /b 2
                     )
 
-                    if not exist "%TRIVY_CACHE_DIR%" mkdir "%TRIVY_CACHE_DIR%"
-                    if errorlevel 1 exit /b 1
+                    if not exist "%TRIVY_CACHE_DIR%\\db\\metadata.json" (
+                        echo ERROR: Trivy vulnerability database metadata is missing.
+                        exit /b 1
+                    )
 
-                    "%TRIVY_EXE%" image --cache-dir "%TRIVY_CACHE_DIR%" --download-db-only
-                    if errorlevel 1 exit /b 1
+                    if not exist "%TRIVY_CACHE_DIR%\\db\\trivy.db" (
+                        echo ERROR: Trivy vulnerability database is missing.
+                        exit /b 1
+                    )
 
-                    "%TRIVY_EXE%" image --cache-dir "%TRIVY_CACHE_DIR%" --download-java-db-only
-                    if errorlevel 1 exit /b 1
+                    if not exist "%TRIVY_CACHE_DIR%\\java-db\\metadata.json" (
+                        echo ERROR: Trivy Java database metadata is missing.
+                        exit /b 1
+                    )
 
-                    echo Trivy vulnerability databases refreshed.
+                    if not exist "%TRIVY_CACHE_DIR%\\java-db\\trivy-java.db" (
+                        echo ERROR: Trivy Java database is missing.
+                        exit /b 1
+                    )
+
+                    echo Existing Trivy databases found.
+                    echo Reusing the existing database cache.
                 '''
             }
         }
