@@ -1,4 +1,4 @@
-
+﻿
 pipeline {
     agent any
 
@@ -250,7 +250,7 @@ pipeline {
                         bat """
                             @echo off
                             "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                              -Dsonar.projectKey=securestock ^
+                              -Dsonar.projectKey=SecureStock ^
                               -Dsonar.projectName=SecureStock ^
                               -Dsonar.sources=backend/src/main/java,frontend/src ^
                               -Dsonar.java.binaries=backend/target/classes ^
