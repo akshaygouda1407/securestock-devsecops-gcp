@@ -1,4 +1,3 @@
-
 pipeline {
     agent any
 
@@ -20,7 +19,9 @@ pipeline {
 
         GITLEAKS_EXE = 'C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gitleaks.Gitleaks_Microsoft.Winget.Source_8wekyb3d8bbwe\\gitleaks.exe'
 
-        PATH = "C:\\Windows\\System32;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;${env.PATH}"
+        TRIVY_EXE = 'C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Packages\\AquaSecurity.Trivy_Microsoft.Winget.Source_8wekyb3d8bbdwe\\trivy.exe'
+
+        PATH = "C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;C:\\Windows\\System32;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;${env.PATH}"
 
         BACKEND_IMAGE = 'securestock-backend:latest'
         FRONTEND_IMAGE = 'securestock-frontend:latest'
@@ -37,11 +38,10 @@ pipeline {
                     @echo off
                     git --version
                     java -version
-                    mvn -version
+                    call mvn -version
                     node --version
                     npm --version
                     docker --version
-                    trivy --version
 
                     if not exist "%GITLEAKS_EXE%" (
                         echo ERROR: Gitleaks executable not found: %GITLEAKS_EXE%
@@ -49,6 +49,14 @@ pipeline {
                     )
 
                     "%GITLEAKS_EXE%" version
+                    if errorlevel 1 exit /b 1
+
+                    if not exist "%TRIVY_EXE%" (
+                        echo ERROR: Trivy executable not found: %TRIVY_EXE%
+                        exit /b 2
+                    )
+
+                    "%TRIVY_EXE%" --version
                     if errorlevel 1 exit /b 1
                 '''
             }
@@ -58,15 +66,6 @@ pipeline {
             steps {
                 bat '''
                     @echo off
-
-                    if not exist "%GITLEAKS_EXE%" (
-                        echo ERROR: Gitleaks executable not found: %GITLEAKS_EXE%
-                        exit /b 2
-                    )
-
-                    "%GITLEAKS_EXE%" version
-                    if errorlevel 1 exit /b 1
-
                     "%GITLEAKS_EXE%" detect --source . --no-git --redact --exit-code 1
                     if errorlevel 1 exit /b 1
                 '''
@@ -112,8 +111,11 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'checkov-report.json,checkov-console.log',
-                        allowEmptyArchive: true, fingerprint: true
+                    archiveArtifacts(
+                        artifacts: 'checkov-report.json,checkov-console.log',
+                        allowEmptyArchive: true,
+                        fingerprint: true
+                    )
                 }
             }
         }
@@ -139,8 +141,10 @@ pipeline {
             }
             post {
                 always {
-                    junit testResults: 'backend/target/surefire-reports/*.xml',
+                    junit(
+                        testResults: 'backend/target/surefire-reports/*.xml',
                         allowEmptyResults: true
+                    )
                 }
             }
         }
@@ -223,8 +227,10 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'frontend/npm-audit-report.json,frontend/npm-audit-error.txt',
+                    archiveArtifacts(
+                        artifacts: 'frontend/npm-audit-report.json,frontend/npm-audit-error.txt',
                         allowEmptyArchive: true
+                    )
                 }
             }
         }
@@ -266,6 +272,14 @@ pipeline {
         stage('OWASP Dependency Check') {
             steps {
                 script {
+                    bat '''
+                        @echo off
+                        if not exist "%WORKSPACE%\\dependency-check-reports" (
+                            mkdir "%WORKSPACE%\\dependency-check-reports"
+                        )
+                        if errorlevel 1 exit /b 1
+                    '''
+
                     dependencyCheck(
                         odcInstallation: 'OWASP-Dependency-Check',
                         additionalArguments: '--scan backend --scan frontend --format ALL --out dependency-check-reports --noupdate'
@@ -274,8 +288,11 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'dependency-check-reports/**',
-                        allowEmptyArchive: true, fingerprint: true
+                    archiveArtifacts(
+                        artifacts: 'dependency-check-reports/**',
+                        allowEmptyArchive: true,
+                        fingerprint: true
+                    )
 
                     dependencyCheckPublisher(
                         pattern: 'dependency-check-reports/dependency-check-report.xml',
@@ -306,12 +323,19 @@ pipeline {
             steps {
                 bat '''
                     @echo off
-                    if not exist "%TRIVY_CACHE_DIR%" mkdir "%TRIVY_CACHE_DIR%"
 
-                    trivy image --cache-dir "%TRIVY_CACHE_DIR%" --download-db-only
+                    if not exist "%TRIVY_EXE%" (
+                        echo ERROR: Trivy executable not found: %TRIVY_EXE%
+                        exit /b 2
+                    )
+
+                    if not exist "%TRIVY_CACHE_DIR%" mkdir "%TRIVY_CACHE_DIR%"
                     if errorlevel 1 exit /b 1
 
-                    trivy image --cache-dir "%TRIVY_CACHE_DIR%" --download-java-db-only
+                    "%TRIVY_EXE%" image --cache-dir "%TRIVY_CACHE_DIR%" --download-db-only
+                    if errorlevel 1 exit /b 1
+
+                    "%TRIVY_EXE%" image --cache-dir "%TRIVY_CACHE_DIR%" --download-java-db-only
                     if errorlevel 1 exit /b 1
 
                     echo Trivy vulnerability databases refreshed.
@@ -356,7 +380,7 @@ pipeline {
             steps {
                 bat '''
                     @echo off
-                    trivy image ^
+                    "%TRIVY_EXE%" image ^
                       --cache-dir "%TRIVY_CACHE_DIR%" ^
                       --skip-db-update ^
                       --skip-java-db-update ^
@@ -373,8 +397,10 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'trivy-backend-report.json',
+                    archiveArtifacts(
+                        artifacts: 'trivy-backend-report.json',
                         allowEmptyArchive: true
+                    )
                 }
             }
         }
@@ -383,7 +409,7 @@ pipeline {
             steps {
                 bat '''
                     @echo off
-                    trivy image ^
+                    "%TRIVY_EXE%" image ^
                       --cache-dir "%TRIVY_CACHE_DIR%" ^
                       --skip-db-update ^
                       --skip-java-db-update ^
@@ -400,8 +426,10 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'trivy-frontend-report.json',
+                    archiveArtifacts(
+                        artifacts: 'trivy-frontend-report.json',
                         allowEmptyArchive: true
+                    )
                 }
             }
         }
