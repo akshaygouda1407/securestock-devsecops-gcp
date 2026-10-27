@@ -1,4 +1,4 @@
-
+﻿
 pipeline {
     agent any
 
@@ -17,6 +17,8 @@ pipeline {
         JAVA_TOOL_OPTIONS = '-Duser.timezone=Asia/Kolkata'
         JAVA_HOME = 'C:\\Program Files\\Java\\jdk-21.0.12'
         CHECKOV_EXE = 'E:\\checkov-venv\\Scripts\\checkov.cmd'
+
+        GITLEAKS_EXE = 'C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gitleaks.Gitleaks_Microsoft.Winget.Source_8wekyb3d8bbwe\\gitleaks.exe'
 
         PATH = "C:\\Windows\\System32;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs;C:\\Users\\User\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;C:\\Program Files\\Java\\jdk-21.0.12\\bin;E:\\checkov-venv\\Scripts;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;${env.PATH}"
 
@@ -40,7 +42,14 @@ pipeline {
                     npm --version
                     docker --version
                     trivy --version
-                    gitleaks version
+
+                    if not exist "%GITLEAKS_EXE%" (
+                        echo ERROR: Gitleaks executable not found: %GITLEAKS_EXE%
+                        exit /b 2
+                    )
+
+                    "%GITLEAKS_EXE%" version
+                    if errorlevel 1 exit /b 1
                 '''
             }
         }
@@ -49,7 +58,16 @@ pipeline {
             steps {
                 bat '''
                     @echo off
-                    gitleaks detect --source . --no-git --redact --exit-code 1
+
+                    if not exist "%GITLEAKS_EXE%" (
+                        echo ERROR: Gitleaks executable not found: %GITLEAKS_EXE%
+                        exit /b 2
+                    )
+
+                    "%GITLEAKS_EXE%" version
+                    if errorlevel 1 exit /b 1
+
+                    "%GITLEAKS_EXE%" detect --source . --no-git --redact --exit-code 1
                     if errorlevel 1 exit /b 1
                 '''
             }
