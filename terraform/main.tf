@@ -1,21 +1,23 @@
 terraform {
   required_version = ">= 1.5.0"
+
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 8.9"
+    }
+  }
+}
+
+provider "google" {
+  project = var.project_id
+  region  = var.region
 }
 
 resource "terraform_data" "securestock" {
   input = {
     project_name = "SecureStock"
-    environment  = "local"
+    environment  = var.environment
     managed_by   = "Terraform"
   }
-}
-
-output "project_name" {
-  description = "Project being validated locally"
-  value       = terraform_data.securestock.output.project_name
-}
-
-output "environment" {
-  description = "Target environment"
-  value       = terraform_data.securestock.output.environment
 }
